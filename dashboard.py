@@ -44,7 +44,32 @@ for col in normalized.columns:
 
 st.subheader("📊 Stock Comparison (Normalized)")
 st.line_chart(normalized)
+st.subheader("📊 Stock Comparison (Normalized)")
+st.line_chart(normalized)
 
+# 👇👇👇 YAHAN ADD KARNA HAI
+
+# 🤖 AI Prediction (Simple Trend)
+
+st.subheader("🤖 AI Prediction (Next 7 Days)")
+
+last_price = data.iloc[-1]
+
+predictions = []
+
+returns = data.pct_change().mean()
+
+for i in range(7):
+    next_price = last_price * (1 + returns)
+    predictions.append(next_price)
+    last_price = next_price
+
+future_dates = pd.date_range(start=data.index[-1], periods=7)
+pred_df = pd.DataFrame(predictions, index=future_dates, columns=data.columns)
+
+combined = pd.concat([data.tail(30), pred_df])
+
+st.line_chart(combined)
 # Show latest prices
 st.subheader("💰 Latest Prices")
 
