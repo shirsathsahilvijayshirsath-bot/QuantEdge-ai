@@ -33,7 +33,9 @@ data = yf.download(stocks, start=start_date, end=end_date)["Close"]
 if data.empty:
     st.error("No data found")
     st.stop()
-
+if len(data) < 2:
+    st.warning("Not enough data")
+    st.stop()
 # Normalize for comparison
 normalized = data.copy()
 
