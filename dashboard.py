@@ -35,7 +35,10 @@ if data.empty:
     st.stop()
 
 # Normalize for comparison
-normalized = data / data.iloc[0] * 100
+normalized = data.copy()
+
+for col in normalized.columns:
+    normalized[col] = (normalized[col] / normalized[col].iloc[0]) * 100
 
 st.subheader("📊 Stock Comparison (Normalized)")
 st.line_chart(normalized)
