@@ -44,8 +44,6 @@ for col in normalized.columns:
 
 st.subheader("📊 Stock Comparison (Normalized)")
 st.line_chart(normalized)
-st.subheader("📊 Stock Comparison (Normalized)")
-st.line_chart(normalized)
 
 # 👇👇👇 YAHAN ADD KARNA HAI
 
