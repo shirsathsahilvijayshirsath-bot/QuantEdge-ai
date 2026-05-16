@@ -10,13 +10,17 @@ st.title("🚀 QuantEdge AI - Pro Trading Dashboard")
 # Sidebar
 st.sidebar.header("Settings")
 
-stock = st.sidebar.text_input("Stock Symbol", "RELIANCE.NS")
+# ✅ Nifty 50 Dropdown
+nifty50 = [
+    "RELIANCE.NS", "TCS.NS", "INFY.NS",
+    "HDFCBANK.NS", "ICICIBANK.NS",
+    "LT.NS", "SBIN.NS", "ITC.NS"
+]
+
+stock = st.sidebar.selectbox("Select Stock", nifty50)
+
 start_date = st.sidebar.date_input("Start Date", pd.to_datetime("2023-01-01"))
 end_date = st.sidebar.date_input("End Date", pd.to_datetime("today"))
-
-if stock == "":
-    st.warning("Enter stock symbol")
-    st.stop()
 
 # Fetch data
 data = yf.download(stock, start=start_date, end=end_date)
