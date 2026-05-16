@@ -10,68 +10,43 @@ st.title("🚀 QuantEdge AI - Pro Trading Dashboard")
 # Sidebar
 st.sidebar.header("Settings")
 
-# ✅ Nifty 50 Dropdown
+# Stock list
 nifty50 = [
     "RELIANCE.NS", "TCS.NS", "INFY.NS",
     "HDFCBANK.NS", "ICICIBANK.NS",
     "LT.NS", "SBIN.NS", "ITC.NS"
 ]
 
-stock = st.sidebar.selectbox("Select Stock", nifty50)
+# ✅ Multi-select for comparison
+stocks = st.sidebar.multiselect("Select Stocks to Compare", nifty50, default=["RELIANCE.NS"])
 
 start_date = st.sidebar.date_input("Start Date", pd.to_datetime("2023-01-01"))
 end_date = st.sidebar.date_input("End Date", pd.to_datetime("today"))
 
-# Fetch data
-data = yf.download(stock, start=start_date, end=end_date)
-
-if data.empty:
-    st.error("Invalid stock symbol")
+if len(stocks) == 0:
+    st.warning("Select at least one stock")
     st.stop()
 
-# Indicators
-data["50_MA"] = data["Close"].rolling(50).mean()
-data["200_MA"] = data["Close"].rolling(200).mean()
+# Fetch data
+data = yf.download(stocks, start=start_date, end=end_date)["Close"]
 
-# BUY/SELL SIGNAL
-latest_price = data["Close"].iloc[-1]
-ma50 = data["50_MA"].iloc[-1]
-ma200 = data["200_MA"].iloc[-1]
+if data.empty:
+    st.error("No data found")
+    st.stop()
 
-signal = ""
+# Normalize for comparison
+normalized = data / data.iloc[0] * 100
 
-if ma50 > ma200:
-    signal = "🟢 BUY"
-elif ma50 < ma200:
-    signal = "🔴 SELL"
-else:
-    signal = "⚪ HOLD"
+st.subheader("📊 Stock Comparison (Normalized)")
+st.line_chart(normalized)
 
-st.subheader(f"Signal: {signal}")
+# Show latest prices
+st.subheader("💰 Latest Prices")
 
-# Candlestick chart
-fig = go.Figure()
+for stock in stocks:
+    price = data[stock].iloc[-1]
+    st.write(f"{stock}: ₹ {round(price,2)}")
 
-fig.add_trace(go.Candlestick(
-    x=data.index,
-    open=data['Open'],
-    high=data['High'],
-    low=data['Low'],
-    close=data['Close'],
-    name="Candles"
-))
-
-fig.add_trace(go.Scatter(x=data.index, y=data["50_MA"], name="50 MA"))
-fig.add_trace(go.Scatter(x=data.index, y=data["200_MA"], name="200 MA"))
-
-st.plotly_chart(fig, use_container_width=True)
-
-# Stats
-st.subheader("📊 Stats")
-st.write("Latest Price:", round(latest_price, 2))
-st.write("High:", round(data["High"].max(), 2))
-st.write("Low:", round(data["Low"].min(), 2))
-
-# Data
+# Optional: show raw data
 st.subheader("📋 Recent Data")
 st.dataframe(data.tail())
