@@ -43,7 +43,7 @@ for col in normalized.columns:
     normalized[col] = (normalized[col] / normalized[col].iloc[0]) * 100
 
 st.subheader("📊 Stock Comparison (Normalized)")
-st.line_chart(normalized)
+st.line_chart(combined, use_container_width=True)
 
 # 👇👇👇 YAHAN ADD KARNA HAI
 
