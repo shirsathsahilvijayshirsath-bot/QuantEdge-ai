@@ -1,49 +1,73 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import plotly.graph_objects as go
 
-st.set_page_config(page_title="QuantEdge AI", layout="wide")
+st.set_page_config(page_title="QuantEdge AI PRO", layout="wide")
 
-st.title("📈 QuantEdge AI - Advanced Stock Dashboard")
+st.title("🚀 QuantEdge AI - Pro Trading Dashboard")
 
 # Sidebar
 st.sidebar.header("Settings")
 
 stock = st.sidebar.text_input("Stock Symbol", "RELIANCE.NS")
-
 start_date = st.sidebar.date_input("Start Date", pd.to_datetime("2023-01-01"))
 end_date = st.sidebar.date_input("End Date", pd.to_datetime("today"))
 
-# Validation
 if stock == "":
-    st.warning("Please enter a stock symbol")
+    st.warning("Enter stock symbol")
     st.stop()
 
 # Fetch data
 data = yf.download(stock, start=start_date, end=end_date)
 
 if data.empty:
-    st.error("Invalid stock symbol or no data found")
+    st.error("Invalid stock symbol")
     st.stop()
 
-# Moving averages
-data["50_MA"] = data["Close"].rolling(window=50).mean()
-data["200_MA"] = data["Close"].rolling(window=200).mean()
+# Indicators
+data["50_MA"] = data["Close"].rolling(50).mean()
+data["200_MA"] = data["Close"].rolling(200).mean()
 
-# Layout
-col1, col2 = st.columns(2)
+# BUY/SELL SIGNAL
+latest_price = data["Close"].iloc[-1]
+ma50 = data["50_MA"].iloc[-1]
+ma200 = data["200_MA"].iloc[-1]
 
-with col1:
-    st.subheader("📊 Price Chart")
-    st.line_chart(data[["Close", "50_MA", "200_MA"]])
+signal = ""
 
-with col2:
-    st.subheader("📋 Recent Data")
-    st.dataframe(data.tail())
+if ma50 > ma200:
+    signal = "🟢 BUY"
+elif ma50 < ma200:
+    signal = "🔴 SELL"
+else:
+    signal = "⚪ HOLD"
 
-# Extra info
-st.subheader("📈 Key Stats")
+st.subheader(f"Signal: {signal}")
 
-st.write("Latest Price:", round(data["Close"].iloc[-1], 2))
-st.write("Highest Price:", round(data["High"].max(), 2))
-st.write("Lowest Price:", round(data["Low"].min(), 2))
+# Candlestick chart
+fig = go.Figure()
+
+fig.add_trace(go.Candlestick(
+    x=data.index,
+    open=data['Open'],
+    high=data['High'],
+    low=data['Low'],
+    close=data['Close'],
+    name="Candles"
+))
+
+fig.add_trace(go.Scatter(x=data.index, y=data["50_MA"], name="50 MA"))
+fig.add_trace(go.Scatter(x=data.index, y=data["200_MA"], name="200 MA"))
+
+st.plotly_chart(fig, use_container_width=True)
+
+# Stats
+st.subheader("📊 Stats")
+st.write("Latest Price:", round(latest_price, 2))
+st.write("High:", round(data["High"].max(), 2))
+st.write("Low:", round(data["Low"].min(), 2))
+
+# Data
+st.subheader("📋 Recent Data")
+st.dataframe(data.tail())
