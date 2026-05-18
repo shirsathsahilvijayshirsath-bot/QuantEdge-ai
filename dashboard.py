@@ -67,7 +67,37 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig, use_container_width=True)
+# =========================
+# 📊 Bollinger Bands
+# =========================
 
+st.subheader("📊 Bollinger Bands")
+
+bb_data = signal_data
+
+ma20 = bb_data.rolling(window=20).mean()
+std = bb_data.rolling(window=20).std()
+
+upper_band = ma20 + (2 * std)
+lower_band = ma20 - (2 * std)
+
+# Plot
+bb_df = pd.DataFrame({
+    "Price": bb_data,
+    "Upper Band": upper_band,
+    "Lower Band": lower_band,
+    "MA20": ma20
+})
+
+st.line_chart(bb_df, use_container_width=True)
+
+# Signal
+if bb_data.iloc[-1] > upper_band.iloc[-1]:
+    st.error("🔴 Price near Upper Band (Sell Zone)")
+elif bb_data.iloc[-1] < lower_band.iloc[-1]:
+    st.success("🟢 Price near Lower Band (Buy Zone)")
+else:
+    st.warning("⚖️ Neutral Zone")
 # =========================
 # 🤖 Buy / Sell Signal
 # =========================
