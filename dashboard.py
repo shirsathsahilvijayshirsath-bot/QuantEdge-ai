@@ -118,7 +118,28 @@ else:
     st.warning("⚖️ Neutral")
 
 st.line_chart(rsi, use_container_width=True)
+# =========================
+# 📊 MACD Indicator
+# =========================
 
+st.subheader("📊 MACD Indicator")
+
+exp1 = signal_data.ewm(span=12, adjust=False).mean()
+exp2 = signal_data.ewm(span=26, adjust=False).mean()
+
+macd = exp1 - exp2
+signal = macd.ewm(span=9, adjust=False).mean()
+
+st.line_chart(pd.DataFrame({
+    "MACD": macd,
+    "Signal": signal
+}), use_container_width=True)
+
+# Signal Logic
+if macd.iloc[-1] > signal.iloc[-1]:
+    st.success("🟢 MACD Buy Signal")
+else:
+    st.error("🔴 MACD Sell Signal")
 # =========================
 # 🎯 Stop Loss / Target
 # =========================
