@@ -33,7 +33,52 @@ if len(stocks) == 0:
 
 # Fetch data
 data = yf.download(stocks, start=start_date, end=end_date)["Close"]
+# =========================
+# 🕯️ Candlestick Chart
+# =========================
 
+st.subheader("🕯️ Candlestick Chart")
+
+stock = stocks[0]
+
+ohlc = yf.download(stock, start=start_date, end=end_date)
+
+fig = go.Figure(data=[go.Candlestick(
+    x=ohlc.index,
+    open=ohlc['Open'],
+    high=ohlc['High'],
+    low=ohlc['Low'],
+    close=ohlc['Close']
+)])
+
+fig.update_layout(
+    title=f"{stock} Candlestick Chart",
+    xaxis_title="Date",
+    yaxis_title="Price"
+)
+
+st.plotly_chart(fig, use_container_width=True)
+# =========================
+# 🤖 Buy / Sell Signal
+# =========================
+
+st.subheader("🤖 Buy / Sell Signal")
+
+signal_data = data[stock]
+
+ma50 = signal_data.rolling(window=50).mean()
+ma200 = signal_data.rolling(window=200).mean()
+
+latest_ma50 = ma50.iloc[-1]
+latest_ma200 = ma200.iloc[-1]
+
+if latest_ma50 > latest_ma200:
+    st.success(f"🟢 BUY Signal for {stock}")
+elif latest_ma50 < latest_ma200:
+    st.error(f"🔴 SELL Signal for {stock}")
+else:
+    st.warning("⚖️ HOLD")
+    
 if data.empty:
     st.error("No data found")
     st.stop()
