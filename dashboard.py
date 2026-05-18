@@ -1,8 +1,9 @@
+
 import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
-
+import requests
 st.set_page_config(page_title="QuantEdge AI PRO", layout="wide")
 
 st.title("🚀 QuantEdge AI - Pro Trading Dashboard")
@@ -249,3 +250,5 @@ for stock in stocks:
 
 st.subheader("📋 Recent Data")
 st.dataframe(data.tail())
+
+
