@@ -33,6 +33,15 @@ if len(stocks) == 0:
 
 # Fetch data
 data = yf.download(stocks, start=start_date, end=end_date)["Close"]
+
+if data.empty:
+    st.error("No data found")
+    st.stop()
+
+if len(data) < 2:
+    st.warning("Not enough data")
+    st.stop()
+
 # =========================
 # 🕯️ Candlestick Chart
 # =========================
@@ -58,6 +67,7 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig, use_container_width=True)
+
 # =========================
 # 🤖 Buy / Sell Signal
 # =========================
@@ -71,6 +81,7 @@ ma200 = signal_data.rolling(window=200).mean()
 
 latest_ma50 = ma50.iloc[-1]
 latest_ma200 = ma200.iloc[-1]
+latest_price = signal_data.iloc[-1]
 
 if latest_ma50 > latest_ma200:
     st.success(f"🟢 BUY Signal for {stock}")
@@ -78,22 +89,72 @@ elif latest_ma50 < latest_ma200:
     st.error(f"🔴 SELL Signal for {stock}")
 else:
     st.warning("⚖️ HOLD")
-    
-if data.empty:
-    st.error("No data found")
-    st.stop()
 
-if len(data) < 2:
-    st.warning("Not enough data")
-    st.stop()
+# =========================
+# 📉 RSI Indicator
+# =========================
 
-# Normalize
+st.subheader("📉 RSI Indicator")
+
+delta = signal_data.diff()
+gain = delta.clip(lower=0)
+loss = -delta.clip(upper=0)
+
+avg_gain = gain.rolling(window=14).mean()
+avg_loss = loss.rolling(window=14).mean()
+
+rs = avg_gain / avg_loss
+rsi = 100 - (100 / (1 + rs))
+
+latest_rsi = rsi.iloc[-1]
+
+st.write(f"RSI: {round(latest_rsi,2)}")
+
+if latest_rsi > 70:
+    st.error("🔴 Overbought (Sell Zone)")
+elif latest_rsi < 30:
+    st.success("🟢 Oversold (Buy Zone)")
+else:
+    st.warning("⚖️ Neutral")
+
+st.line_chart(rsi, use_container_width=True)
+
+# =========================
+# 🎯 Stop Loss / Target
+# =========================
+
+st.subheader("🎯 Stop Loss & Target Calculator")
+
+buy_price = st.number_input("Enter Buy Price", value=float(latest_price))
+
+stop_loss = buy_price * 0.95
+target = buy_price * 1.10
+
+st.write(f"🛑 Stop Loss: ₹ {round(stop_loss,2)}")
+st.write(f"🎯 Target: ₹ {round(target,2)}")
+
+# =========================
+# 🔔 Price Alert
+# =========================
+
+st.subheader("🔔 Price Alert")
+
+alert_price = st.number_input("Set Alert Price", value=float(latest_price))
+
+if latest_price >= alert_price:
+    st.success(f"🚨 Alert! Price reached ₹ {alert_price}")
+else:
+    st.info(f"Current Price: ₹ {round(latest_price,2)}")
+
+# =========================
+# 📊 Normalized Comparison
+# =========================
+
 normalized = data.copy()
 
 for col in normalized.columns:
     normalized[col] = (normalized[col] / normalized[col].iloc[0]) * 100
 
-# ✅ Correct chart
 st.subheader("📊 Stock Comparison (Normalized)")
 st.line_chart(normalized, use_container_width=True)
 
@@ -119,7 +180,6 @@ pred_df = pd.DataFrame(predictions, index=future_dates, columns=data.columns)
 
 combined = pd.concat([data.tail(30), pred_df])
 
-# ✅ Correct chart
 st.line_chart(combined, use_container_width=True)
 
 # =========================
