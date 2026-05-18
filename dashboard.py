@@ -17,8 +17,12 @@ nifty50 = [
     "LT.NS", "SBIN.NS", "ITC.NS"
 ]
 
-# ✅ Multi-select for comparison
-stocks = st.sidebar.multiselect("Select Stocks to Compare", nifty50, default=["RELIANCE.NS"])
+# Multi-select
+stocks = st.sidebar.multiselect(
+    "Select Stocks to Compare", 
+    nifty50, 
+    default=["RELIANCE.NS"]
+)
 
 start_date = st.sidebar.date_input("Start Date", pd.to_datetime("2023-01-01"))
 end_date = st.sidebar.date_input("End Date", pd.to_datetime("today"))
@@ -33,26 +37,28 @@ data = yf.download(stocks, start=start_date, end=end_date)["Close"]
 if data.empty:
     st.error("No data found")
     st.stop()
+
 if len(data) < 2:
     st.warning("Not enough data")
     st.stop()
-# Normalize for comparison
+
+# Normalize
 normalized = data.copy()
 
 for col in normalized.columns:
     normalized[col] = (normalized[col] / normalized[col].iloc[0]) * 100
 
+# ✅ Correct chart
 st.subheader("📊 Stock Comparison (Normalized)")
-st.line_chart(combined, use_container_width=True)
+st.line_chart(normalized, use_container_width=True)
 
-# 👇👇👇 YAHAN ADD KARNA HAI
-
-# 🤖 AI Prediction (Simple Trend)
+# =========================
+# 🤖 AI Prediction
+# =========================
 
 st.subheader("🤖 AI Prediction (Next 7 Days)")
 
 last_price = data.iloc[-1]
-
 predictions = []
 
 returns = data.pct_change().mean()
@@ -63,18 +69,27 @@ for i in range(7):
     last_price = next_price
 
 future_dates = pd.date_range(start=data.index[-1], periods=7)
+
 pred_df = pd.DataFrame(predictions, index=future_dates, columns=data.columns)
 
 combined = pd.concat([data.tail(30), pred_df])
 
-st.line_chart(combined)
-# Show latest prices
+# ✅ Correct chart
+st.line_chart(combined, use_container_width=True)
+
+# =========================
+# 💰 Latest Prices
+# =========================
+
 st.subheader("💰 Latest Prices")
 
 for stock in stocks:
     price = data[stock].iloc[-1]
-    st.write(f"{stock}: ₹ {round(price,2)}")
+    st.write(f"{stock}: ₹ {round(price, 2)}")
 
-# Optional: show raw data
+# =========================
+# 📋 Recent Data
+# =========================
+
 st.subheader("📋 Recent Data")
 st.dataframe(data.tail())
