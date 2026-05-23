@@ -74,7 +74,8 @@ st.plotly_chart(fig, use_container_width=True)
 
 st.subheader("📊 Bollinger Bands")
 
-bb_data = signal_data
+bb_data = data   ✅
+
 
 ma20 = bb_data.rolling(window=20).mean()
 std = bb_data.rolling(window=20).std()
