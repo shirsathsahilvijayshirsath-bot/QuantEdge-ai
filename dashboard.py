@@ -1,255 +1,161 @@
-
 import streamlit as st
-import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
-import requests
-st.set_page_config(page_title="QuantEdge AI PRO", layout="wide")
+import redis
+import time
+import numpy as np
+from collections import deque
+from sklearn.linear_model import SGDClassifier
+from datetime import datetime
 
-st.title("🚀 QuantEdge AI - Pro Trading Dashboard")
+# ================= REDIS =================
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
-# Sidebar
-st.sidebar.header("Settings")
+# ================= ML MODEL =================
+prices = deque(maxlen=50)
+model = SGDClassifier(loss="log_loss")
+trained = False
 
-# Stock list
-nifty50 = [
-    "RELIANCE.NS", "TCS.NS", "INFY.NS",
-    "HDFCBANK.NS", "ICICIBANK.NS",
-    "LT.NS", "SBIN.NS", "ITC.NS"
-]
+def update_model():
+    global trained
 
-# Multi-select
-stocks = st.sidebar.multiselect(
-    "Select Stocks to Compare", 
-    nifty50, 
-    default=["RELIANCE.NS"]
-)
+    if len(prices) < 20:
+        return
 
-start_date = st.sidebar.date_input("Start Date", pd.to_datetime("2023-01-01"))
-end_date = st.sidebar.date_input("End Date", pd.to_datetime("today"))
+    X, y = [], []
+    arr = np.array(prices)
 
-if len(stocks) == 0:
-    st.warning("Select at least one stock")
-    st.stop()
+    for i in range(5, len(arr)-1):
+        ret = (arr[i] - arr[i-1]) / arr[i-1]
+        target = 1 if arr[i+1] > arr[i] else 0
 
-# Fetch data
-data = yf.download(stocks, start=start_date, end=end_date)["Close"]
+        X.append([ret, arr[:i].mean(), np.std(arr[:i])])
+        y.append(target)
 
-if data.empty:
-    st.error("No data found")
-    st.stop()
+    model.fit(X, y)
+    trained = True
 
-if len(data) < 2:
-    st.warning("Not enough data")
-    st.stop()
+def predict():
+    if not trained or len(prices) < 20:
+        return "HOLD", 0
 
-# =========================
-# 🕯️ Candlestick Chart
-# =========================
+    arr = np.array(prices)
 
-st.subheader("🕯️ Candlestick Chart")
+    ret = (arr[-1] - arr[-2]) / arr[-2]
+    ma = arr.mean()
+    vol = np.std(arr)
 
-stock = stocks[0]
+    prob = model.predict_proba([[ret, ma, vol]])[0]
+    conf = max(prob)
 
-ohlc = yf.download(stock, start=start_date, end=end_date)
+    if prob[1] > 0.6:
+        return "BUY", conf
+    elif prob[0] > 0.6:
+        return "SELL", conf
 
-fig = go.Figure(data=[go.Candlestick(
-    x=ohlc.index,
-    open=ohlc['Open'],
-    high=ohlc['High'],
-    low=ohlc['Low'],
-    close=ohlc['Close']
-)])
+    return "HOLD", conf
 
-fig.update_layout(
-    title=f"{stock} Candlestick Chart",
-    xaxis_title="Date",
-    yaxis_title="Price"
-)
+# ================= TRADING =================
+balance = 100000
+position = 0
 
-st.plotly_chart(fig, use_container_width=True)
-# =========================
-# 📊 Bollinger Bands
-# =========================
+def execute_trade(signal, price):
+    global balance, position
 
-st.subheader("📊 Bollinger Bands")
+    qty = 1
 
-bb_data = data   ✅
+    if signal == "BUY" and balance >= price:
+        position += qty
+        balance -= price
 
+    elif signal == "SELL" and position > 0:
+        position -= qty
+        balance += price
 
-ma20 = bb_data.rolling(window=20).mean()
-std = bb_data.rolling(window=20).std()
+# ================= STREAMLIT =================
+st.set_page_config(layout="wide")
+st.title("🚀 QuantEdge AI - FINAL PRO SYSTEM")
 
-upper_band = ma20 + (2 * std)
-lower_band = ma20 - (2 * std)
+# ================= GET LIVE PRICE =================
+price = r.get("price")
 
-# Plot
-bb_df = pd.DataFrame({
-    "Price": bb_data,
-    "Upper Band": upper_band,
-    "Lower Band": lower_band,
-    "MA20": ma20
+# fallback (agar websocket nahi hai)
+if not price:
+    price = 2500 + np.random.uniform(-5, 5)
+
+price = float(price)
+
+# ================= ML FLOW =================
+prices.append(price)
+update_model()
+signal, confidence = predict()
+
+# ================= MODE =================
+mode = r.get("mode") or "AUTO"
+
+# ================= EXECUTION =================
+if mode == "AUTO":
+    if signal != "HOLD" and confidence > 0.65:
+        execute_trade(signal, price)
+
+elif mode == "MANUAL":
+    manual_signal = r.get("manual_signal")
+
+    if manual_signal in ["BUY", "SELL"]:
+        execute_trade(manual_signal, price)
+        r.set("manual_signal", "HOLD")
+
+# ================= UI =================
+col1, col2, col3 = st.columns(3)
+
+col1.metric("💰 Price", f"₹{round(price,2)}")
+col2.metric("🤖 Signal", signal)
+col3.metric("🧠 Confidence", f"{round(confidence*100,2)}%")
+
+# ================= CONTROL PANEL =================
+st.subheader("🎮 Control Panel")
+
+c1, c2, c3, c4 = st.columns(4)
+
+if c1.button("AUTO"):
+    r.set("mode", "AUTO")
+
+if c2.button("MANUAL"):
+    r.set("mode", "MANUAL")
+
+if c3.button("BUY"):
+    r.set("manual_signal", "BUY")
+
+if c4.button("SELL"):
+    r.set("manual_signal", "SELL")
+
+if st.button("🚨 STOP"):
+    r.set("mode", "STOP")
+
+st.write("Mode:", mode)
+
+# ================= CHART =================
+if "history" not in st.session_state:
+    st.session_state.history = []
+
+st.session_state.history.append({
+    "time": datetime.now(),
+    "price": price
 })
 
-st.line_chart(bb_df, use_container_width=True)
+df = pd.DataFrame(st.session_state.history)
 
-# Signal
-if bb_data.iloc[-1] > upper_band.iloc[-1]:
-    st.error("🔴 Price near Upper Band (Sell Zone)")
-elif bb_data.iloc[-1] < lower_band.iloc[-1]:
-    st.success("🟢 Price near Lower Band (Buy Zone)")
-else:
-    st.warning("⚖️ Neutral Zone")
-# =========================
-# 🤖 Buy / Sell Signal
-# =========================
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=df['time'], y=df['price'], mode='lines'))
 
-st.subheader("🤖 Buy / Sell Signal")
+st.plotly_chart(fig, use_container_width=True)
 
-signal_data = data[stock]
+# ================= PORTFOLIO =================
+st.subheader("💰 Portfolio")
 
-ma50 = signal_data.rolling(window=50).mean()
-ma200 = signal_data.rolling(window=200).mean()
+st.write("Balance:", round(balance,2))
+st.write("Position:", position)
 
-latest_ma50 = ma50.iloc[-1]
-latest_ma200 = ma200.iloc[-1]
-latest_price = signal_data.iloc[-1]
-
-if latest_ma50 > latest_ma200:
-    st.success(f"🟢 BUY Signal for {stock}")
-elif latest_ma50 < latest_ma200:
-    st.error(f"🔴 SELL Signal for {stock}")
-else:
-    st.warning("⚖️ HOLD")
-
-# =========================
-# 📉 RSI Indicator
-# =========================
-
-st.subheader("📉 RSI Indicator")
-
-delta = signal_data.diff()
-gain = delta.clip(lower=0)
-loss = -delta.clip(upper=0)
-
-avg_gain = gain.rolling(window=14).mean()
-avg_loss = loss.rolling(window=14).mean()
-
-rs = avg_gain / avg_loss
-rsi = 100 - (100 / (1 + rs))
-
-latest_rsi = rsi.iloc[-1]
-
-st.write(f"RSI: {round(latest_rsi,2)}")
-
-if latest_rsi > 70:
-    st.error("🔴 Overbought (Sell Zone)")
-elif latest_rsi < 30:
-    st.success("🟢 Oversold (Buy Zone)")
-else:
-    st.warning("⚖️ Neutral")
-
-st.line_chart(rsi, use_container_width=True)
-# =========================
-# 📊 MACD Indicator
-# =========================
-
-st.subheader("📊 MACD Indicator")
-
-exp1 = signal_data.ewm(span=12, adjust=False).mean()
-exp2 = signal_data.ewm(span=26, adjust=False).mean()
-
-macd = exp1 - exp2
-signal = macd.ewm(span=9, adjust=False).mean()
-
-st.line_chart(pd.DataFrame({
-    "MACD": macd,
-    "Signal": signal
-}), use_container_width=True)
-
-# Signal Logic
-if macd.iloc[-1] > signal.iloc[-1]:
-    st.success("🟢 MACD Buy Signal")
-else:
-    st.error("🔴 MACD Sell Signal")
-# =========================
-# 🎯 Stop Loss / Target
-# =========================
-
-st.subheader("🎯 Stop Loss & Target Calculator")
-
-buy_price = st.number_input("Enter Buy Price", value=float(latest_price))
-
-stop_loss = buy_price * 0.95
-target = buy_price * 1.10
-
-st.write(f"🛑 Stop Loss: ₹ {round(stop_loss,2)}")
-st.write(f"🎯 Target: ₹ {round(target,2)}")
-
-# =========================
-# 🔔 Price Alert
-# =========================
-
-st.subheader("🔔 Price Alert")
-
-alert_price = st.number_input("Set Alert Price", value=float(latest_price))
-
-if latest_price >= alert_price:
-    st.success(f"🚨 Alert! Price reached ₹ {alert_price}")
-else:
-    st.info(f"Current Price: ₹ {round(latest_price,2)}")
-
-# =========================
-# 📊 Normalized Comparison
-# =========================
-
-normalized = data.copy()
-
-for col in normalized.columns:
-    normalized[col] = (normalized[col] / normalized[col].iloc[0]) * 100
-
-st.subheader("📊 Stock Comparison (Normalized)")
-st.line_chart(normalized, use_container_width=True)
-
-# =========================
-# 🤖 AI Prediction
-# =========================
-
-st.subheader("🤖 AI Prediction (Next 7 Days)")
-
-last_price = data.iloc[-1]
-predictions = []
-
-returns = data.pct_change().mean()
-
-for i in range(7):
-    next_price = last_price * (1 + returns)
-    predictions.append(next_price)
-    last_price = next_price
-
-future_dates = pd.date_range(start=data.index[-1], periods=7)
-
-pred_df = pd.DataFrame(predictions, index=future_dates, columns=data.columns)
-
-combined = pd.concat([data.tail(30), pred_df])
-
-st.line_chart(combined, use_container_width=True)
-
-# =========================
-# 💰 Latest Prices
-# =========================
-
-st.subheader("💰 Latest Prices")
-
-for stock in stocks:
-    price = data[stock].iloc[-1]
-    st.write(f"{stock}: ₹ {round(price, 2)}")
-
-# =========================
-# 📋 Recent Data
-# =========================
-
-st.subheader("📋 Recent Data")
-st.dataframe(data.tail())
-
-
+# ================= REFRESH =================
+time.sleep(2)
+st.rerun()
