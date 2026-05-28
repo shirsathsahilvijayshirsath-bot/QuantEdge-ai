@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import redis
+
 import time
 import numpy as np
 from collections import deque
