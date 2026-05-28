@@ -6,10 +6,8 @@ import time
 import numpy as np
 from collections import deque
 from sklearn.linear_model import SGDClassifier
-from datetime import datetime
-
-# ================= REDIS =================
-r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+from datetime import datetime 
+=True)
 
 # ================= ML MODEL =================
 prices = deque(maxlen=50)
