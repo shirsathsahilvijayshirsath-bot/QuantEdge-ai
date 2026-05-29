@@ -135,3 +135,4 @@ st.caption("🔄 Auto refresh every 2 sec")
 
 time.sleep(2)
 st.rerun()
+    
