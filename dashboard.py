@@ -1,103 +1,153 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.graph_objects as go
-import yfinance as yf
-from datetime import datetime
 import time
+import numpy as np
+from collections import deque
+from sklearn.linear_model import SGDClassifier
+from datetime import datetime
 
+# ================= ML MODEL =================
+prices = deque(maxlen=50)
+model = SGDClassifier(loss="log_loss")
+trained = False
+
+def update_model():
+    global trained
+
+    if len(prices) < 20:
+        return
+
+    X, y = [], []
+    arr = np.array(prices)
+
+    for i in range(5, len(arr)-1):
+        ret = (arr[i] - arr[i-1]) / arr[i-1]
+        target = 1 if arr[i+1] > arr[i] else 0
+
+        X.append([ret, arr[:i].mean(), np.std(arr[:i])])
+        y.append(target)
+
+    model.fit(X, y)
+    trained = True
+
+def predict():
+    if not trained or len(prices) < 20:
+        return "HOLD", 0
+
+    arr = np.array(prices)
+
+    ret = (arr[-1] - arr[-2]) / arr[-2]
+    ma = arr.mean()
+    vol = np.std(arr)
+
+    prob = model.predict_proba([[ret, ma, vol]])[0]
+    conf = max(prob)
+
+    if prob[1] > 0.6:
+        return "BUY", conf
+    elif prob[0] > 0.6:
+        return "SELL", conf
+
+    return "HOLD", conf
+
+# ================= TRADING =================
+balance = 100000
+position = 0
+
+def execute_trade(signal, price):
+    global balance, position
+
+    qty = 1
+
+    if signal == "BUY" and balance >= price:
+        position += qty
+        balance -= price
+
+    elif signal == "SELL" and position > 0:
+        position -= qty
+        balance += price
+
+# ================= STREAMLIT =================
 st.set_page_config(layout="wide")
+st.title("📱 QuantEdge AI - PRO UI")
 
-# ================= STATE =================
-if "balance" not in st.session_state:
-    st.session_state.balance = 100000
+# ================= FAKE LIVE PRICE =================
+price = 2500 + np.random.uniform(-10, 10)
 
-if "position" not in st.session_state:
-    st.session_state.position = 0
+# ================= ML FLOW =================
+prices.append(price)
+update_model()
+signal, confidence = predict()
 
-if "history" not in st.session_state:
-    st.session_state.history = []
-
+# ================= MODE =================
 if "mode" not in st.session_state:
     st.session_state.mode = "AUTO"
 
-# ================= LIVE DATA (SAFE) =================
-ticker = "RELIANCE.NS"
+if "manual_signal" not in st.session_state:
+    st.session_state.manual_signal = "HOLD"
 
-data = yf.download(ticker, period="1d", interval="1m")
-
-if data.empty or "Close" not in data:
-    st.warning("⚠️ Live data load nahi hua, fallback use ho raha hai")
-    price = 2500 + np.random.uniform(-5, 5)
-    df = pd.DataFrame()
-else:
-    price = float(data["Close"].dropna().iloc[-1])
-    df = data.reset_index()
-
-# ================= AI STRATEGY =================
-signal = "HOLD"
-
-if not df.empty and len(df) > 20:
-    df["MA20"] = df["Close"].rolling(20).mean()
-
-    if df["Close"].iloc[-1] > df["MA20"].iloc[-1]:
-        signal = "BUY"
-    elif df["Close"].iloc[-1] < df["MA20"].iloc[-1]:
-        signal = "SELL"
-
-# ================= AUTO TRADING =================
-def execute_trade(signal, price):
-    if signal == "BUY" and st.session_state.balance >= price:
-        st.session_state.position += 1
-        st.session_state.balance -= price
-
-    elif signal == "SELL" and st.session_state.position > 0:
-        st.session_state.position -= 1
-        st.session_state.balance += price
-
+# ================= EXECUTION =================
 if st.session_state.mode == "AUTO":
-    execute_trade(signal, price)
+    if signal != "HOLD" and confidence > 0.65:
+        execute_trade(signal, price)
+
+elif st.session_state.mode == "MANUAL":
+    if st.session_state.manual_signal in ["BUY", "SELL"]:
+        execute_trade(st.session_state.manual_signal, price)
+        st.session_state.manual_signal = "HOLD"
 
 # ================= UI =================
-st.title("🤖 QuantEdge AUTO TRADING")
-
 col1, col2, col3 = st.columns(3)
 
 col1.metric("💰 Price", f"₹{round(price,2)}")
-col2.metric("📊 Signal", signal)
-col3.metric("⚙️ Mode", st.session_state.mode)
+col2.metric("🤖 Signal", signal)
+col3.metric("🧠 Confidence", f"{round(confidence*100,2)}%")
 
-# ================= CONTROL =================
-c1, c2 = st.columns(2)
+# ================= CONTROL PANEL =================
+st.subheader("🎮 Control Panel")
+
+c1, c2, c3, c4 = st.columns(4)
 
 if c1.button("AUTO"):
     st.session_state.mode = "AUTO"
 
-if c2.button("STOP"):
+if c2.button("MANUAL"):
+    st.session_state.mode = "MANUAL"
+
+if c3.button("BUY"):
+    st.session_state.manual_signal = "BUY"
+
+if c4.button("SELL"):
+    st.session_state.manual_signal = "SELL"
+
+if st.button("🚨 STOP"):
     st.session_state.mode = "STOP"
 
+st.write("Mode:", st.session_state.mode)
+
 # ================= CHART =================
-if not df.empty:
-    fig = go.Figure(data=[go.Candlestick(
-        x=df['Datetime'],
-        open=df['Open'],
-        high=df['High'],
-        low=df['Low'],
-        close=df['Close']
-    )])
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("Chart data available nahi hai")
+if "history" not in st.session_state:
+    st.session_state.history = []
+
+st.session_state.history.append({
+    "time": datetime.now(),
+    "price": price
+})
+
+df = pd.DataFrame(st.session_state.history)
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=df['time'], y=df['price'], mode='lines'))
+
+st.plotly_chart(fig, use_container_width=True)
 
 # ================= PORTFOLIO =================
 st.subheader("💰 Portfolio")
 
-pnl = (st.session_state.position * price) + st.session_state.balance - 100000
+st.write("Balance:", round(balance,2))
+st.write("Position:", position)
 
-st.write("Balance:", round(st.session_state.balance,2))
-st.write("Position:", st.session_state.position)
-st.write("PnL:", round(pnl,2))
-
-# ================= AUTO REFRESH =================
-time.sleep(5)
+# ================= REFRESH =================
+time.sleep(2)
 st.rerun()
