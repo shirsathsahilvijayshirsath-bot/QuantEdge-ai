@@ -21,22 +21,29 @@ if "history" not in st.session_state:
 if "mode" not in st.session_state:
     st.session_state.mode = "AUTO"
 
-# ================= LIVE DATA =================
+# ================= LIVE DATA (SAFE) =================
 ticker = "RELIANCE.NS"
+
 data = yf.download(ticker, period="1d", interval="1m")
 
-price = float(data["Close"].iloc[-1])
-df = data.reset_index()
+if data.empty or "Close" not in data:
+    st.warning("⚠️ Live data load nahi hua, fallback use ho raha hai")
+    price = 2500 + np.random.uniform(-5, 5)
+    df = pd.DataFrame()
+else:
+    price = float(data["Close"].dropna().iloc[-1])
+    df = data.reset_index()
 
-# ================= SIMPLE AI STRATEGY =================
-df["MA20"] = df["Close"].rolling(20).mean()
-
+# ================= AI STRATEGY =================
 signal = "HOLD"
 
-if df["Close"].iloc[-1] > df["MA20"].iloc[-1]:
-    signal = "BUY"
-elif df["Close"].iloc[-1] < df["MA20"].iloc[-1]:
-    signal = "SELL"
+if not df.empty and len(df) > 20:
+    df["MA20"] = df["Close"].rolling(20).mean()
+
+    if df["Close"].iloc[-1] > df["MA20"].iloc[-1]:
+        signal = "BUY"
+    elif df["Close"].iloc[-1] < df["MA20"].iloc[-1]:
+        signal = "SELL"
 
 # ================= AUTO TRADING =================
 def execute_trade(signal, price):
@@ -52,7 +59,7 @@ if st.session_state.mode == "AUTO":
     execute_trade(signal, price)
 
 # ================= UI =================
-st.title("🤖 AUTO TRADING BOT")
+st.title("🤖 QuantEdge AUTO TRADING")
 
 col1, col2, col3 = st.columns(3)
 
@@ -61,22 +68,26 @@ col2.metric("📊 Signal", signal)
 col3.metric("⚙️ Mode", st.session_state.mode)
 
 # ================= CONTROL =================
-if st.button("AUTO"):
+c1, c2 = st.columns(2)
+
+if c1.button("AUTO"):
     st.session_state.mode = "AUTO"
 
-if st.button("STOP"):
+if c2.button("STOP"):
     st.session_state.mode = "STOP"
 
 # ================= CHART =================
-fig = go.Figure(data=[go.Candlestick(
-    x=df['Datetime'],
-    open=df['Open'],
-    high=df['High'],
-    low=df['Low'],
-    close=df['Close']
-)])
-
-st.plotly_chart(fig, use_container_width=True)
+if not df.empty:
+    fig = go.Figure(data=[go.Candlestick(
+        x=df['Datetime'],
+        open=df['Open'],
+        high=df['High'],
+        low=df['Low'],
+        close=df['Close']
+    )])
+    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.info("Chart data available nahi hai")
 
 # ================= PORTFOLIO =================
 st.subheader("💰 Portfolio")
@@ -87,6 +98,6 @@ st.write("Balance:", round(st.session_state.balance,2))
 st.write("Position:", st.session_state.position)
 st.write("PnL:", round(pnl,2))
 
-# ================= REFRESH =================
+# ================= AUTO REFRESH =================
 time.sleep(5)
 st.rerun()
