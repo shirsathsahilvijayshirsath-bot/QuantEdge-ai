@@ -30,11 +30,12 @@ if "balance" not in st.session_state:
 stocks = ["RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS"]
 
 # ================= DATA & ENGINE =================
-@st.cache_data(ttl=300) # 5 minute tak cache karega taaki phone hang na ho
+@st.cache_data(ttl=300) 
 def get_data(symbol):
     try:
-        # ML ke liye kam se kam 1 saal ka data chahiye (3mo bahut kam tha)
-        df = yf.download(symbol, period="1y", progress=False)
+        # BUG FIX: MultiIndex issue resolved using Ticker().history()
+        stock = yf.Ticker(symbol)
+        df = stock.history(period="1y")
         if df is None or df.empty:
             return None
         return df.dropna()
@@ -114,7 +115,6 @@ def trade(stock, signal, price):
 # ================= UI DASHBOARD =================
 st.subheader("📡 Live ML Scanner & Charts")
 
-# Auto-refresh hatakar manual button lagaya hai taaki app fast chale
 if st.button("🔄 Refresh Market Data"):
     st.cache_data.clear()
 
@@ -149,7 +149,6 @@ with col1:
 with col2:
     st.subheader("📜 Trade History")
     if st.session_state.history:
-        # History ko table (dataframe) format mein dikhana
         st.dataframe(pd.DataFrame(st.session_state.history).tail(5), use_container_width=True)
     else:
         st.info("No trades executed yet.")
