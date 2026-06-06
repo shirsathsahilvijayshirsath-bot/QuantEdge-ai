@@ -4,11 +4,27 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import time
+import requests
 from sklearn.linear_model import LinearRegression
 
-st.set_page_config(page_title="QuantEdge FIXED", layout="wide")
+st.set_page_config(page_title="QuantEdge AI", layout="wide")
 
-st.title("📊 QuantEdge AI - Stable Trading System")
+st.title("📊 QuantEdge AI - Telegram Enabled")
+
+# ================= TELEGRAM =================
+TOKEN = 8629163881
+CHAT_ID = "7602586865"
+
+def send_telegram(msg):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    data = {
+        "chat_id": CHAT_ID,
+        "text": msg
+    }
+    try:
+        requests.post(url, data=data)
+    except:
+        pass
 
 # ================= SESSION =================
 if "balance" not in st.session_state:
@@ -24,7 +40,7 @@ stocks = ["RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS"]
 def get_data(symbol):
     try:
         df = yf.download(symbol, period="3mo", progress=False)
-        if df is None or df.empty or "Close" not in df.columns:
+        if df is None or df.empty:
             return None
         return df.dropna()
     except:
@@ -55,7 +71,7 @@ def indicators(df):
 def get_signal(df):
 
     if df is None or len(df) < 30:
-        return "HOLD", 0.0, 0.0
+        return "HOLD", 0, 0
 
     df = indicators(df)
 
@@ -74,27 +90,15 @@ def get_signal(df):
         pred = float(model.predict([X.iloc[-1]])[0])
 
     except:
-        return "HOLD", 0.0, 0.0
+        return "HOLD", 0, 0
 
-    # SAFE BOOLEAN LOGIC
-    buy = [
-        bool(pred > price),
-        bool(rsi < 35),
-        bool(macd > sig)
-    ]
+    buy = (pred > price) and (rsi < 35) and (macd > sig)
+    sell = (pred < price) and (rsi > 65) and (macd < sig)
 
-    sell = [
-        bool(pred < price),
-        bool(rsi > 65),
-        bool(macd < sig)
-    ]
-
-    if all(buy):
+    if buy:
         return "BUY", price, pred
-
-    elif all(sell):
+    elif sell:
         return "SELL", price, pred
-
     else:
         return "HOLD", price, pred
 
@@ -114,9 +118,13 @@ def trade(stock, signal, price):
             st.session_state.positions[stock] = q
             st.session_state.balance -= q * price
 
+            send_telegram(f"📈 BUY {stock} at ₹{price}")
+
     elif signal == "SELL" and qty > 0:
         st.session_state.balance += qty * price
         st.session_state.positions[stock] = 0
+
+        send_telegram(f"📉 SELL {stock} at ₹{price}")
 
     st.session_state.history.append({
         "stock": stock,
@@ -155,6 +163,10 @@ st.subheader("📜 Trade History")
 if st.session_state.history:
     st.dataframe(pd.DataFrame(st.session_state.history).tail(10))
 
-# ================= REFRESH =================
+# ================= TEST =================
+if st.button("Test Telegram"):
+    send_telegram("🔥 Bot Connected Successfully!")
+
+# ================= AUTO REFRESH =================
 time.sleep(5)
 st.rerun()
