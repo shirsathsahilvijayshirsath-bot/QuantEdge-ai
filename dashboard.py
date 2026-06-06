@@ -12,7 +12,7 @@ st.set_page_config(page_title="QuantEdge AI", layout="wide")
 st.title("📊 QuantEdge AI - Telegram Enabled")
 
 # ================= TELEGRAM =================
-TOKEN = 8629163881
+TOKEN = 8629163881:AAHrO4n9KpDNT0tMR1DoRvXeJeZ5VEIWCCA
 CHAT_ID = "7602586865"
 
 def send_telegram(msg):
