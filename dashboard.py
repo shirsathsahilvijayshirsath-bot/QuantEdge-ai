@@ -2,14 +2,11 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import numpy as np
-import time
 import requests
-from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestClassifier
 
 st.set_page_config(page_title="QuantEdge AI", layout="wide")
-
-st.title("📊 QuantEdge AI - Telegram Enabled")
+st.title("📊 QuantEdge AI - Master Version")
 
 # ================= TELEGRAM =================
 TOKEN ="8629163881:AAHrO4n9KpDNT0tMR1DoRvXeJeZ5VEIWCCA"
@@ -17,156 +14,148 @@ CHAT_ID ="7602586865"
 
 def send_telegram(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    data = {
-        "chat_id": CHAT_ID,
-        "text": msg
-    }
+    data = {"chat_id": CHAT_ID, "text": msg}
     try:
-        r = requests.post(url, data=data)
-        st.write(r.text)   # 👈 yeh screen pe response dikhayega
+        requests.post(url, data=data)
     except Exception as e:
-        st.write(e)
+        st.error(f"Telegram Error: {e}")
+
 # ================= SESSION =================
 if "balance" not in st.session_state:
-    st.session_state.balance = 100000
+    st.session_state.balance = 100000.0
     st.session_state.positions = {}
     st.session_state.history = []
 
 # ================= STOCK LIST =================
 stocks = ["RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS"]
 
-# ================= DATA =================
-@st.cache_data(ttl=60)
+# ================= DATA & ENGINE =================
+@st.cache_data(ttl=300) # 5 minute tak cache karega taaki phone hang na ho
 def get_data(symbol):
     try:
-        df = yf.download(symbol, period="3mo", progress=False)
+        # ML ke liye kam se kam 1 saal ka data chahiye (3mo bahut kam tha)
+        df = yf.download(symbol, period="1y", progress=False)
         if df is None or df.empty:
             return None
         return df.dropna()
     except:
         return None
 
-# ================= INDICATORS =================
-def indicators(df):
+def advanced_engine(df):
+    if df is None or len(df) < 50:
+        return "HOLD", 0
 
-    delta = df["Close"].diff()
-
+    # Indicators calculate karna
+    df['SMA_50'] = df['Close'].rolling(window=50).mean()
+    
+    delta = df['Close'].diff()
     gain = delta.clip(lower=0).rolling(14).mean()
     loss = (-delta.clip(upper=0)).rolling(14).mean()
     rs = gain / loss
-    df["RSI"] = 100 - (100/(1+rs))
-
-    ema12 = df["Close"].ewm(span=12).mean()
-    ema26 = df["Close"].ewm(span=26).mean()
-
-    df["MACD"] = ema12 - ema26
-    df["Signal"] = df["MACD"].ewm(span=9).mean()
-
-    df["MA10"] = df["Close"].rolling(10).mean()
-    df["MA20"] = df["Close"].rolling(20).mean()
-
-    return df.dropna()
-
-# ================= SIGNAL =================
-def get_signal(df):
-
-    if df is None or len(df) < 30:
-        return "HOLD", 0, 0
-
-    df = indicators(df)
-
+    df['RSI'] = 100 - (100 / (1 + rs))
+    
+    # Target set karna (Agle din ka price)
+    df['Tomorrow_Close'] = df['Close'].shift(-1)
+    df['Target'] = (df['Tomorrow_Close'] > df['Close']).astype(int)
+    df = df.dropna()
+    
     try:
         price = float(df["Close"].iloc[-1])
         rsi = float(df["RSI"].iloc[-1])
-        macd = float(df["MACD"].iloc[-1])
-        sig = float(df["Signal"].iloc[-1])
-
-        X = df[["MA10","MA20"]]
-        y = df["Close"]
-
-        model = LinearRegression()
-        model.fit(X, y)
-
-        pred = float(model.predict([X.iloc[-1]])[0])
-
+        sma50 = float(df["SMA_50"].iloc[-1])
+        
+        # Asli Machine Learning (Random Forest)
+        features = ['Close', 'Volume', 'SMA_50', 'RSI']
+        model = RandomForestClassifier(n_estimators=100, random_state=42)
+        model.fit(df[features], df['Target'])
+        
+        latest_data = df.iloc[-1:]
+        prediction = model.predict(latest_data[features])[0]
+        confidence = model.predict_proba(latest_data[features])[0].max() * 100
+        
+        # Confluence Logic (Safest Trades Only)
+        if prediction == 1 and rsi < 40 and price > sma50 and confidence > 55:
+            return "BUY", price
+        elif prediction == 0 and rsi > 65:
+            return "SELL", price
+        else:
+            return "HOLD", price
     except:
-        return "HOLD", 0, 0
+        return "HOLD", 0
 
-    buy = (pred > price) and (rsi < 35) and (macd > sig)
-    sell = (pred < price) and (rsi > 65) and (macd < sig)
-
-    if buy:
-        return "BUY", price, pred
-    elif sell:
-        return "SELL", price, pred
-    else:
-        return "HOLD", price, pred
-
-# ================= TRADE =================
+# ================= TRADE EXECUTION =================
 def trade(stock, signal, price):
-
     if stock not in st.session_state.positions:
         st.session_state.positions[stock] = 0
 
     qty = st.session_state.positions[stock]
 
     if signal == "BUY" and qty == 0:
-        invest = st.session_state.balance * 0.1
+        invest = st.session_state.balance * 0.1 # Total balance ka 10%
         q = int(invest / price)
 
         if q > 0:
             st.session_state.positions[stock] = q
             st.session_state.balance -= q * price
-
-            send_telegram(f"📈 BUY {stock} at ₹{price}")
+            send_telegram(f"📈 BUY Alert: {stock} at ₹{price:.2f}")
 
     elif signal == "SELL" and qty > 0:
         st.session_state.balance += qty * price
         st.session_state.positions[stock] = 0
-
-        send_telegram(f"📉 SELL {stock} at ₹{price}")
+        send_telegram(f"📉 SELL Alert: {stock} at ₹{price:.2f}")
 
     st.session_state.history.append({
-        "stock": stock,
-        "signal": signal,
-        "price": price,
-        "time": pd.Timestamp.now()
+        "Stock": stock,
+        "Signal": signal,
+        "Price": round(price, 2),
+        "Time": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
     })
 
-# ================= UI =================
-st.subheader("📡 Live Scanner")
+# ================= UI DASHBOARD =================
+st.subheader("📡 Live ML Scanner & Charts")
+
+# Auto-refresh hatakar manual button lagaya hai taaki app fast chale
+if st.button("🔄 Refresh Market Data"):
+    st.cache_data.clear()
 
 cols = st.columns(len(stocks))
 
 for i, stock in enumerate(stocks):
-
     df = get_data(stock)
-    signal, price, pred = get_signal(df)
+    signal, price = advanced_engine(df)
 
     with cols[i]:
-        st.metric(stock, signal)
+        st.metric(label=stock, value=signal, delta=f"₹{price:.2f}" if price > 0 else "")
+        
+        # Chota interactive chart (Pichle 30 din ka trend)
+        if df is not None:
+            st.line_chart(df['Close'].tail(30), height=150)
 
     if signal in ["BUY","SELL"] and price > 0:
         trade(stock, signal, price)
 
-# ================= PORTFOLIO =================
-st.subheader("💼 Portfolio")
+st.divider()
 
-st.write("Balance:", round(st.session_state.balance,2))
+# ================= PORTFOLIO & HISTORY =================
+col1, col2 = st.columns(2)
 
-for s,q in st.session_state.positions.items():
-    st.write(f"{s}: {q}")
+with col1:
+    st.subheader("💼 Virtual Portfolio")
+    st.write(f"**Cash Balance:** ₹{st.session_state.balance:,.2f}")
+    for s, q in st.session_state.positions.items():
+        if q > 0:
+            st.write(f"- {s}: {q} Shares")
 
-# ================= HISTORY =================
-st.subheader("📜 Trade History")
+with col2:
+    st.subheader("📜 Trade History")
+    if st.session_state.history:
+        # History ko table (dataframe) format mein dikhana
+        st.dataframe(pd.DataFrame(st.session_state.history).tail(5), use_container_width=True)
+    else:
+        st.info("No trades executed yet.")
 
-if st.session_state.history:
-    st.dataframe(pd.DataFrame(st.session_state.history).tail(10))
-
-# ================= TEST =================
-if st.button("Test Telegram"):
-    send_telegram("🔥 Bot Connected Successfully!")
-
-# ================= AUTO REFRESH =================
-time.sleep(5)
-st.rerun()
+# ================= SYSTEM TEST =================
+st.divider()
+if st.button("Test Telegram Connection"):
+    send_telegram("🔥 QuantEdge AI is Online & Ready!")
+    st.success("Test message sent!")
