@@ -13,7 +13,7 @@ st.title("📊 QuantEdge AI - Telegram Enabled")
 
 # ================= TELEGRAM =================
 TOKEN ="8629163881AAHrO4n9KpDNT0tMR1DoRvXeJeZ5VEIWCCA"
-CHAT_ID = "7602586865"
+CHAT_ID ="7602586865"
 
 def send_telegram(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
@@ -22,10 +22,10 @@ def send_telegram(msg):
         "text": msg
     }
     try:
-        requests.post(url, data=data)
-    except:
-        pass
-
+        r = requests.post(url, data=data)
+        st.write(r.text)   # 👈 yeh screen pe response dikhayega
+    except Exception as e:
+        st.write(e)
 # ================= SESSION =================
 if "balance" not in st.session_state:
     st.session_state.balance = 100000
