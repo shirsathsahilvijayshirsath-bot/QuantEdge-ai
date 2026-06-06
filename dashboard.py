@@ -4,19 +4,27 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import time
+import requests
 from sklearn.linear_model import LinearRegression
 
-st.set_page_config(page_title="QuantEdge ELITE", layout="wide")
+st.set_page_config(page_title="QuantEdge ELITE+", layout="wide")
 
-st.title("📊 QuantEdge AI - Elite Trading System")
+st.title("📊 QuantEdge AI - Live Alert System")
+
+# ================= TELEGRAM =================
+BOT_TOKEN = "YOUR_BOT_TOKEN"
+CHAT_ID = "YOUR_CHAT_ID"
+
+def send_alert(msg):
+    try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
+    except:
+        pass
 
 # ================= SESSION =================
-if "balance" not in st.session_state:
-    st.session_state.balance = 100000
-    st.session_state.positions = {}
-    st.session_state.history = []
-    st.session_state.mode = "AUTO"
-    st.session_state.last_trade_time = {}
+if "last_alert" not in st.session_state:
+    st.session_state.last_alert = {}
 
 # ================= STOCK LIST =================
 stocks = ["RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS"]
@@ -26,8 +34,6 @@ stocks = ["RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS"]
 def get_data(symbol):
     try:
         df = yf.download(symbol, period="3mo", progress=False)
-        if df is None or df.empty:
-            return None
         return df.dropna()
     except:
         return None
@@ -55,7 +61,7 @@ def indicators(df):
 def get_signal(df):
 
     if df is None or len(df) < 30:
-        return "HOLD", 0, 0, 0
+        return "HOLD", 0, 0
 
     df = indicators(df)
 
@@ -77,107 +83,32 @@ def get_signal(df):
     sell = [pred < price, rsi > 65, macd < sig]
 
     if all(buy):
-        signal = "BUY"
-        conf = sum(buy)/3 * 100
+        return "BUY", price, pred
     elif all(sell):
-        signal = "SELL"
-        conf = sum(sell)/3 * 100
+        return "SELL", price, pred
     else:
-        signal = "HOLD"
-        conf = 0
-
-    return signal, price, pred, conf
-
-# ================= TRADE =================
-def trade(stock, signal, price):
-
-    now = time.time()
-
-    # Overtrading protection (10 sec gap)
-    if stock in st.session_state.last_trade_time:
-        if now - st.session_state.last_trade_time[stock] < 10:
-            return
-
-    if stock not in st.session_state.positions:
-        st.session_state.positions[stock] = 0
-
-    qty = st.session_state.positions[stock]
-
-    if signal == "BUY" and qty == 0:
-        invest = st.session_state.balance * 0.1
-        q = int(invest / price)
-        if q > 0:
-            st.session_state.positions[stock] = q
-            st.session_state.balance -= q * price
-
-    elif signal == "SELL" and qty > 0:
-        st.session_state.balance += qty * price
-        st.session_state.positions[stock] = 0
-
-    st.session_state.last_trade_time[stock] = now
-
-    st.session_state.history.append({
-        "stock": stock,
-        "signal": signal,
-        "price": price,
-        "time": pd.Timestamp.now()
-    })
+        return "HOLD", price, pred
 
 # ================= UI =================
-st.subheader("📡 Live Smart Scanner")
+st.subheader("📡 Live Alert Scanner")
 
-cols = st.columns(len(stocks))
-
-for i,stock in enumerate(stocks):
+for stock in stocks:
 
     df = get_data(stock)
-    signal, price, pred, conf = get_signal(df)
+    signal, price, pred = get_signal(df)
 
-    # ALERT STYLE
-    if signal == "BUY" and conf >= 70:
-        label = "⭐ STRONG BUY"
-    elif signal == "SELL" and conf >= 70:
-        label = "⭐ STRONG SELL"
-    elif signal in ["BUY","SELL"]:
-        label = "⚠️ WEAK"
-    else:
-        label = "⛔ HOLD"
+    if signal in ["BUY","SELL"]:
 
-    with cols[i]:
-        st.metric(stock, label)
+        # Avoid spam alerts
+        last = st.session_state.last_alert.get(stock)
 
-    # AUTO trading only strong signals
-    if st.session_state.mode == "AUTO":
-        if signal in ["BUY","SELL"] and conf >= 70:
-            trade(stock, signal, price)
+        if last != signal:
+            msg = f"{stock} | {signal} | Price: ₹{round(price,2)}"
+            send_alert(msg)
+            st.session_state.last_alert[stock] = signal
 
-# ================= CONTROLS =================
-st.subheader("⚙️ Controls")
-
-c1,c2 = st.columns(2)
-
-if c1.button("AUTO MODE"):
-    st.session_state.mode = "AUTO"
-
-if c2.button("MANUAL MODE"):
-    st.session_state.mode = "MANUAL"
-
-st.write("Mode:", st.session_state.mode)
-
-# ================= PORTFOLIO =================
-st.subheader("💼 Portfolio")
-
-st.write("Balance:", round(st.session_state.balance,2))
-
-for s,q in st.session_state.positions.items():
-    st.write(f"{s}: {q}")
-
-# ================= HISTORY =================
-st.subheader("📜 Trade History")
-
-if st.session_state.history:
-    st.dataframe(pd.DataFrame(st.session_state.history).tail(10))
+    st.write(f"{stock} → {signal} @ ₹{round(price,2)}")
 
 # ================= REFRESH =================
-time.sleep(5)
+time.sleep(10)
 st.rerun()
