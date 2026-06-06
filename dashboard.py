@@ -1,173 +1,183 @@
+# ================= IMPORT =================
 import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
 import time
+from sklearn.linear_model import LinearRegression
 
-# ================= CONFIG =================
-st.set_page_config(layout="wide")
-st.title("📱 QuantEdge AI - Ultimate Trading App")
+st.set_page_config(page_title="QuantEdge ELITE", layout="wide")
 
-# ================= STATE =================
+st.title("📊 QuantEdge AI - Elite Trading System")
+
+# ================= SESSION =================
 if "balance" not in st.session_state:
     st.session_state.balance = 100000
-    st.session_state.position = 0
+    st.session_state.positions = {}
     st.session_state.history = []
     st.session_state.mode = "AUTO"
+    st.session_state.last_trade_time = {}
 
-# ================= INPUT =================
-stock_input = st.text_input("🔍 Stock Symbol (e.g. RELIANCE, TCS, INFY)", "RELIANCE")
+# ================= STOCK LIST =================
+stocks = ["RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS"]
 
-# ================= DATA FUNCTION (FIXED) =================
+# ================= DATA =================
+@st.cache_data(ttl=60)
 def get_data(symbol):
     try:
-        symbol = symbol.strip().upper()
-
-        # Auto add .NS for Indian stocks
-        if not symbol.endswith(".NS"):
-            symbol = symbol + ".NS"
-
-        df = yf.Ticker(symbol).history(period="3mo")
-
-        # Retry if empty
+        df = yf.download(symbol, period="3mo", progress=False)
         if df is None or df.empty:
-            df = yf.download(symbol, period="3mo", progress=False)
-
-        if df is None or df.empty:
-            return None, symbol
-
-        return df, symbol
-
+            return None
+        return df.dropna()
     except:
-        return None, symbol
+        return None
 
-data, stock = get_data(stock_input)
+# ================= INDICATORS =================
+def indicators(df):
 
-# ================= DEFAULT VALUES =================
-status = "LIVE"
-signal = "HOLD"
-trend = "SIDEWAYS"
-confidence = 0
-
-# ================= LOGIC =================
-if data is None:
-    status = "FALLBACK"
-    price = 2500 + np.random.uniform(-50, 50)
-
-else:
-    data = data.dropna()
-
-    if len(data) < 20:
-        status = "LOW DATA"
-
-    price = float(data["Close"].iloc[-1])
-
-    # Indicators
-    data["MA20"] = data["Close"].rolling(20).mean()
-    data["MA50"] = data["Close"].rolling(50).mean()
-
-    delta = data["Close"].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+    delta = df["Close"].diff()
+    gain = delta.clip(lower=0).rolling(14).mean()
+    loss = (-delta.clip(upper=0)).rolling(14).mean()
     rs = gain / loss
-    data["RSI"] = 100 - (100 / (1 + rs))
+    df["RSI"] = 100 - (100/(1+rs))
 
-    # Trend
-    if len(data) > 50:
-        if data["MA20"].iloc[-1] > data["MA50"].iloc[-1]:
-            trend = "UPTREND"
-        else:
-            trend = "DOWNTREND"
+    ema12 = df["Close"].ewm(span=12).mean()
+    ema26 = df["Close"].ewm(span=26).mean()
+    df["MACD"] = ema12 - ema26
+    df["Signal"] = df["MACD"].ewm(span=9).mean()
 
-    # Signal + Confidence
-    if len(data) > 20:
-        if price > data["MA20"].iloc[-1]:
-            signal = "BUY"
-            confidence = min(100, abs(price - data["MA20"].iloc[-1]) / price * 200)
-        elif price < data["MA20"].iloc[-1]:
-            signal = "SELL"
-            confidence = min(100, abs(price - data["MA20"].iloc[-1]) / price * 200)
+    df["MA10"] = df["Close"].rolling(10).mean()
+    df["MA20"] = df["Close"].rolling(20).mean()
 
-# ================= TRADING =================
-def trade(sig, price):
-    if sig == "BUY" and st.session_state.balance >= price:
-        st.session_state.position += 1
-        st.session_state.balance -= price
+    return df.dropna()
 
-    elif sig == "SELL" and st.session_state.position > 0:
-        st.session_state.position -= 1
-        st.session_state.balance += price
+# ================= SIGNAL =================
+def get_signal(df):
+
+    if df is None or len(df) < 30:
+        return "HOLD", 0, 0, 0
+
+    df = indicators(df)
+
+    price = df["Close"].iloc[-1]
+
+    X = df[["MA10","MA20"]]
+    y = df["Close"]
+
+    model = LinearRegression()
+    model.fit(X, y)
+
+    pred = model.predict([X.iloc[-1]])[0]
+
+    rsi = df["RSI"].iloc[-1]
+    macd = df["MACD"].iloc[-1]
+    sig = df["Signal"].iloc[-1]
+
+    buy = [pred > price, rsi < 35, macd > sig]
+    sell = [pred < price, rsi > 65, macd < sig]
+
+    if all(buy):
+        signal = "BUY"
+        conf = sum(buy)/3 * 100
+    elif all(sell):
+        signal = "SELL"
+        conf = sum(sell)/3 * 100
+    else:
+        signal = "HOLD"
+        conf = 0
+
+    return signal, price, pred, conf
+
+# ================= TRADE =================
+def trade(stock, signal, price):
+
+    now = time.time()
+
+    # Overtrading protection (10 sec gap)
+    if stock in st.session_state.last_trade_time:
+        if now - st.session_state.last_trade_time[stock] < 10:
+            return
+
+    if stock not in st.session_state.positions:
+        st.session_state.positions[stock] = 0
+
+    qty = st.session_state.positions[stock]
+
+    if signal == "BUY" and qty == 0:
+        invest = st.session_state.balance * 0.1
+        q = int(invest / price)
+        if q > 0:
+            st.session_state.positions[stock] = q
+            st.session_state.balance -= q * price
+
+    elif signal == "SELL" and qty > 0:
+        st.session_state.balance += qty * price
+        st.session_state.positions[stock] = 0
+
+    st.session_state.last_trade_time[stock] = now
 
     st.session_state.history.append({
-        "time": pd.Timestamp.now(),
-        "signal": sig,
-        "price": price
+        "stock": stock,
+        "signal": signal,
+        "price": price,
+        "time": pd.Timestamp.now()
     })
 
-# AUTO MODE
-if st.session_state.mode == "AUTO":
-    if signal != "HOLD" and confidence > 60:
-        trade(signal, price)
-
 # ================= UI =================
-col1, col2, col3, col4 = st.columns(4)
+st.subheader("📡 Live Smart Scanner")
 
-col1.metric("💰 Price", f"₹{round(price,2)}")
-col2.metric("🤖 Signal", signal)
-col3.metric("📊 Trend", trend)
-col4.metric("🧠 Confidence", f"{round(confidence,2)}%")
+cols = st.columns(len(stocks))
 
-# ================= STATUS =================
-st.caption(f"Status: {status} | Symbol: {stock}")
+for i,stock in enumerate(stocks):
 
-if data is None:
-    st.error(f"❌ '{stock}' ka data nahi mila (symbol check karo)")
+    df = get_data(stock)
+    signal, price, pred, conf = get_signal(df)
+
+    # ALERT STYLE
+    if signal == "BUY" and conf >= 70:
+        label = "⭐ STRONG BUY"
+    elif signal == "SELL" and conf >= 70:
+        label = "⭐ STRONG SELL"
+    elif signal in ["BUY","SELL"]:
+        label = "⚠️ WEAK"
+    else:
+        label = "⛔ HOLD"
+
+    with cols[i]:
+        st.metric(stock, label)
+
+    # AUTO trading only strong signals
+    if st.session_state.mode == "AUTO":
+        if signal in ["BUY","SELL"] and conf >= 70:
+            trade(stock, signal, price)
 
 # ================= CONTROLS =================
-st.subheader("🎮 Control Panel")
+st.subheader("⚙️ Controls")
 
-c1, c2, c3, c4 = st.columns(4)
+c1,c2 = st.columns(2)
 
-if c1.button("AUTO"):
+if c1.button("AUTO MODE"):
     st.session_state.mode = "AUTO"
 
-if c2.button("MANUAL"):
+if c2.button("MANUAL MODE"):
     st.session_state.mode = "MANUAL"
 
-if c3.button("BUY"):
-    trade("BUY", price)
-
-if c4.button("SELL"):
-    trade("SELL", price)
-
 st.write("Mode:", st.session_state.mode)
-
-# ================= CHART =================
-st.subheader("📈 Chart")
-
-if data is not None and not data.empty:
-    st.line_chart(data["Close"])
-else:
-    fake = np.random.randn(50).cumsum() + price
-    st.line_chart(fake)
 
 # ================= PORTFOLIO =================
 st.subheader("💼 Portfolio")
 
 st.write("Balance:", round(st.session_state.balance,2))
-st.write("Position:", st.session_state.position)
+
+for s,q in st.session_state.positions.items():
+    st.write(f"{s}: {q}")
 
 # ================= HISTORY =================
 st.subheader("📜 Trade History")
 
-if len(st.session_state.history) > 0:
-    df_hist = pd.DataFrame(st.session_state.history)
-    st.dataframe(df_hist.tail(10))
-else:
-    st.write("No trades yet")
+if st.session_state.history:
+    st.dataframe(pd.DataFrame(st.session_state.history).tail(10))
 
 # ================= REFRESH =================
-st.caption("🔄 Auto refresh every 5 sec")
-
 time.sleep(5)
 st.rerun()
