@@ -1,153 +1,63 @@
 import streamlit as st
+import yfinance as yf
 import pandas as pd
-import plotly.graph_objects as go
-import time
 import numpy as np
-from collections import deque
-from sklearn.linear_model import SGDClassifier
-from datetime import datetime
 
-# ================= ML MODEL =================
-prices = deque(maxlen=50)
-model = SGDClassifier(loss="log_loss")
-trained = False
-
-def update_model():
-    global trained
-
-    if len(prices) < 20:
-        return
-
-    X, y = [], []
-    arr = np.array(prices)
-
-    for i in range(5, len(arr)-1):
-        ret = (arr[i] - arr[i-1]) / arr[i-1]
-        target = 1 if arr[i+1] > arr[i] else 0
-
-        X.append([ret, arr[:i].mean(), np.std(arr[:i])])
-        y.append(target)
-
-    model.fit(X, y)
-    trained = True
-
-def predict():
-    if not trained or len(prices) < 20:
-        return "HOLD", 0
-
-    arr = np.array(prices)
-
-    ret = (arr[-1] - arr[-2]) / arr[-2]
-    ma = arr.mean()
-    vol = np.std(arr)
-
-    prob = model.predict_proba([[ret, ma, vol]])[0]
-    conf = max(prob)
-
-    if prob[1] > 0.6:
-        return "BUY", conf
-    elif prob[0] > 0.6:
-        return "SELL", conf
-
-    return "HOLD", conf
-
-# ================= TRADING =================
-balance = 100000
-position = 0
-
-def execute_trade(signal, price):
-    global balance, position
-
-    qty = 1
-
-    if signal == "BUY" and balance >= price:
-        position += qty
-        balance -= price
-
-    elif signal == "SELL" and position > 0:
-        position -= qty
-        balance += price
-
-# ================= STREAMLIT =================
 st.set_page_config(layout="wide")
-st.title("📱 QuantEdge AI - PRO UI")
 
-# ================= FAKE LIVE PRICE =================
-price = 2500 + np.random.uniform(-10, 10)
+st.title("📈 QuantEdge AI - Pro Dashboard")
 
-# ================= ML FLOW =================
-prices.append(price)
-update_model()
-signal, confidence = predict()
+# ================= INPUT =================
+stock = st.text_input("Enter Stock Symbol", "RELIANCE.NS")
 
-# ================= MODE =================
-if "mode" not in st.session_state:
-    st.session_state.mode = "AUTO"
+# ================= FETCH DATA SAFE =================
+def get_data(symbol):
+    try:
+        df = yf.Ticker(symbol).history(period="3mo")
+        if df is None or df.empty:
+            return None
+        return df
+    except:
+        return None
 
-if "manual_signal" not in st.session_state:
-    st.session_state.manual_signal = "HOLD"
+data = get_data(stock)
 
-# ================= EXECUTION =================
-if st.session_state.mode == "AUTO":
-    if signal != "HOLD" and confidence > 0.65:
-        execute_trade(signal, price)
+# ================= FALLBACK =================
+if data is None:
+    st.error("❌ Data load nahi hua (symbol ya internet issue)")
 
-elif st.session_state.mode == "MANUAL":
-    if st.session_state.manual_signal in ["BUY", "SELL"]:
-        execute_trade(st.session_state.manual_signal, price)
-        st.session_state.manual_signal = "HOLD"
+    price = 2500 + np.random.uniform(-50, 50)
 
-# ================= UI =================
-col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
+    col1.metric("Price (Fallback)", f"₹{round(price,2)}")
+    col2.metric("Signal", "HOLD")
 
-col1.metric("💰 Price", f"₹{round(price,2)}")
-col2.metric("🤖 Signal", signal)
-col3.metric("🧠 Confidence", f"{round(confidence*100,2)}%")
+else:
+    data = data.dropna()
 
-# ================= CONTROL PANEL =================
-st.subheader("🎮 Control Panel")
+    price = float(data["Close"].iloc[-1])
 
-c1, c2, c3, c4 = st.columns(4)
+    # ================= SIMPLE AI =================
+    data["MA20"] = data["Close"].rolling(20).mean()
 
-if c1.button("AUTO"):
-    st.session_state.mode = "AUTO"
+    signal = "HOLD"
+    if len(data) > 20:
+        if data["Close"].iloc[-1] > data["MA20"].iloc[-1]:
+            signal = "BUY"
+        elif data["Close"].iloc[-1] < data["MA20"].iloc[-1]:
+            signal = "SELL"
 
-if c2.button("MANUAL"):
-    st.session_state.mode = "MANUAL"
+    # ================= UI =================
+    col1, col2, col3 = st.columns(3)
 
-if c3.button("BUY"):
-    st.session_state.manual_signal = "BUY"
+    col1.metric("💰 Price", f"₹{round(price,2)}")
+    col2.metric("📊 Signal", signal)
+    col3.metric("📅 Data Points", len(data))
 
-if c4.button("SELL"):
-    st.session_state.manual_signal = "SELL"
+    # ================= CHART =================
+    st.subheader("📊 Price Chart")
+    st.line_chart(data["Close"])
 
-if st.button("🚨 STOP"):
-    st.session_state.mode = "STOP"
-
-st.write("Mode:", st.session_state.mode)
-
-# ================= CHART =================
-if "history" not in st.session_state:
-    st.session_state.history = []
-
-st.session_state.history.append({
-    "time": datetime.now(),
-    "price": price
-})
-
-df = pd.DataFrame(st.session_state.history)
-
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=df['time'], y=df['price'], mode='lines'))
-
-st.plotly_chart(fig, use_container_width=True)
-
-# ================= PORTFOLIO =================
-st.subheader("💰 Portfolio")
-
-st.write("Balance:", round(balance,2))
-st.write("Position:", position)
-
-# ================= REFRESH =================
-time.sleep(2)
-st.rerun()
+# ================= AUTO REFRESH =================
+st.caption("Auto refresh every 5 sec")
+st.experimental_rerun()
