@@ -8,6 +8,37 @@ from sklearn.ensemble import RandomForestClassifier
 st.set_page_config(page_title="QuantEdge AI", layout="wide")
 st.title("📊 QuantEdge AI - Master Version")
 
+# ================= SECURITY LOGIN =================
+# Yahan apna secret password set karein
+MY_PASSWORD = "QuantEdge2026"
+
+def check_password():
+    """Returns True if the user had the correct password."""
+    if "password_correct" not in st.session_state:
+        st.session_state["password_correct"] = False
+
+    if not st.session_state["password_correct"]:
+        # Password mangne ka dabba
+        st.text_input(
+            "🔒 Apna Password Darj Karein:", 
+            type="password", 
+            key="password_input"
+        )
+        
+        # Check karna ki password sahi hai ya nahi
+        if st.session_state.get("password_input") == MY_PASSWORD:
+            st.session_state["password_correct"] = True
+            st.rerun()
+        elif st.session_state.get("password_input"):
+            st.error("❌ Galat Password! Kripya dobara try karein.")
+            
+        return False
+    return True
+
+# Agar password galat hai, toh aage ka code nahi chalega
+if not check_password():
+    st.stop() # App yahi ruk jayegi
+
 # ================= TELEGRAM =================
 TOKEN ="8629163881:AAHrO4n9KpDNT0tMR1DoRvXeJeZ5VEIWCCA"
 CHAT_ID ="7602586865"
@@ -33,7 +64,6 @@ stocks = ["RELIANCE.NS","TCS.NS","INFY.NS","HDFCBANK.NS","ICICIBANK.NS"]
 @st.cache_data(ttl=300) 
 def get_data(symbol):
     try:
-        # BUG FIX: MultiIndex issue resolved using Ticker().history()
         stock = yf.Ticker(symbol)
         df = stock.history(period="1y")
         if df is None or df.empty:
