@@ -31,7 +31,7 @@ if not check_password():
     st.stop()
 
 st.title("📊 QuantEdge AI - Master Version")
-
+mode = st.radio("Select Trading Mode", ["Swing", "Intraday"])
 # ================= TELEGRAM =================
 TOKEN ="8629163881:AAHrO4n9KpDNT0tMR1DoRvXeJeZ5VEIWCCA"
 CHAT_ID ="7602586865"
