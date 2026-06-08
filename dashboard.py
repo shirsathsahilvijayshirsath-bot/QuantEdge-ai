@@ -181,7 +181,24 @@ for s, q in st.session_state.positions.items():
             st.session_state.positions[s] = 0
 
             send_telegram(f"🛑 STOP LOSS HIT: {s} at ₹{current_price:.2f}")
+from datetime import datetime
 
+now = datetime.now()
+
+# 3:20 PM exit
+if mode == "Intraday" and now.hour == 15 and now.minute >= 20:
+    for s, q in st.session_state.positions.items():
+        if q > 0:
+            df2 = get_data(s)
+            if df2 is None:
+                continue
+
+            price = float(df2["Close"].iloc[-1])
+
+            st.session_state.balance += q * price
+            st.session_state.positions[s] = 0
+
+            send_telegram(f"⏳ EOD EXIT: {s} at ₹{price:.2f}")
         # TARGET PROFIT
         elif current_price >= entry * (1 + TARGET):
             st.session_state.balance += q * current_price
