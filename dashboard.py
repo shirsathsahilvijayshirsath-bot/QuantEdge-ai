@@ -75,17 +75,22 @@ stocks = [
 ]
 
 # ================= DATA & ENGINE =================
-@st.cache_data(ttl=300) 
+
+@st.cache_data(ttl=120)
 def get_data(symbol):
     try:
         stock = yf.Ticker(symbol)
-        df = stock.history(period="1y")
+
+        if mode == "Intraday":
+            df = stock.history(period="1d", interval="5m")   # 🔥 intraday
+        else:
+            df = stock.history(period="1y")                  # swing
+
         if df is None or df.empty:
             return None
         return df.dropna()
     except:
         return None
-
 def advanced_engine(df):
     if df is None or len(df) < 50:
         return "HOLD", 0
