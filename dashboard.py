@@ -119,12 +119,22 @@ def advanced_engine(df):
         prediction = model.predict(latest_data[features])[0]
         confidence = model.predict_proba(latest_data[features])[0].max() * 100
         
-        if prediction == 1 and rsi < 40 and price > sma50 and confidence > 55:
-            return "BUY", price
-        elif prediction == 0 and rsi > 65:
-            return "SELL", price
-        else:
-            return "HOLD", price
+       # 🔥 MODE BASED LOGIC
+if mode == "Intraday":
+    if prediction == 1 and rsi < 45 and price > sma50:
+        return "BUY", price
+    elif prediction == 0 and rsi > 60:
+        return "SELL", price
+    else:
+        return "HOLD", price
+
+else:  # Swing mode
+    if prediction == 1 and rsi < 40 and price > sma50 and confidence > 55:
+        return "BUY", price
+    elif prediction == 0 and rsi > 65:
+        return "SELL", price
+    else:
+        return "HOLD", price 
     except:
         return "HOLD", 0
 
@@ -165,8 +175,12 @@ for i, stock in enumerate(stocks):
 
 st.divider()
 # ================= RISK MANAGEMENT =================
-STOP_LOSS = 0.03   # 3%
-TARGET = 0.06      # 6%
+if mode == "Intraday":
+    STOP_LOSS = 0.01   # 1%
+    TARGET = 0.02      # 2%
+else:
+    STOP_LOSS = 0.03
+    TARGET = 0.06
 
 for s, q in st.session_state.positions.items():
     if q > 0:
