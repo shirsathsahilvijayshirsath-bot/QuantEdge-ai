@@ -6,26 +6,18 @@ import requests
 from sklearn.ensemble import RandomForestClassifier
 
 st.set_page_config(page_title="QuantEdge AI", layout="wide")
-st.title("📊 QuantEdge AI - Master Version")
 
 # ================= SECURITY LOGIN =================
-# Yahan apna secret password set karein
 MY_PASSWORD = "QuantEdge2026"
 
 def check_password():
-    """Returns True if the user had the correct password."""
     if "password_correct" not in st.session_state:
         st.session_state["password_correct"] = False
 
     if not st.session_state["password_correct"]:
-        # Password mangne ka dabba
-        st.text_input(
-            "🔒 Apna Password Darj Karein:", 
-            type="password", 
-            key="password_input"
-        )
+        st.title("🔒 Security Gateway")
+        st.text_input("Apna Password Darj Karein:", type="password", key="password_input")
         
-        # Check karna ki password sahi hai ya nahi
         if st.session_state.get("password_input") == MY_PASSWORD:
             st.session_state["password_correct"] = True
             st.rerun()
@@ -35,9 +27,10 @@ def check_password():
         return False
     return True
 
-# Agar password galat hai, toh aage ka code nahi chalega
 if not check_password():
-    st.stop() # App yahi ruk jayegi
+    st.stop()
+
+st.title("📊 QuantEdge AI - Master Version")
 
 # ================= TELEGRAM =================
 TOKEN ="8629163881:AAHrO4n9KpDNT0tMR1DoRvXeJeZ5VEIWCCA"
@@ -76,16 +69,13 @@ def advanced_engine(df):
     if df is None or len(df) < 50:
         return "HOLD", 0
 
-    # Indicators calculate karna
     df['SMA_50'] = df['Close'].rolling(window=50).mean()
-    
     delta = df['Close'].diff()
     gain = delta.clip(lower=0).rolling(14).mean()
     loss = (-delta.clip(upper=0)).rolling(14).mean()
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
     
-    # Target set karna (Agle din ka price)
     df['Tomorrow_Close'] = df['Close'].shift(-1)
     df['Target'] = (df['Tomorrow_Close'] > df['Close']).astype(int)
     df = df.dropna()
@@ -95,7 +85,6 @@ def advanced_engine(df):
         rsi = float(df["RSI"].iloc[-1])
         sma50 = float(df["SMA_50"].iloc[-1])
         
-        # Asli Machine Learning (Random Forest)
         features = ['Close', 'Volume', 'SMA_50', 'RSI']
         model = RandomForestClassifier(n_estimators=100, random_state=42)
         model.fit(df[features], df['Target'])
@@ -104,7 +93,6 @@ def advanced_engine(df):
         prediction = model.predict(latest_data[features])[0]
         confidence = model.predict_proba(latest_data[features])[0].max() * 100
         
-        # Confluence Logic (Safest Trades Only)
         if prediction == 1 and rsi < 40 and price > sma50 and confidence > 55:
             return "BUY", price
         elif prediction == 0 and rsi > 65:
@@ -113,34 +101,6 @@ def advanced_engine(df):
             return "HOLD", price
     except:
         return "HOLD", 0
-
-# ================= TRADE EXECUTION =================
-def trade(stock, signal, price):
-    if stock not in st.session_state.positions:
-        st.session_state.positions[stock] = 0
-
-    qty = st.session_state.positions[stock]
-
-    if signal == "BUY" and qty == 0:
-        invest = st.session_state.balance * 0.1 # Total balance ka 10%
-        q = int(invest / price)
-
-        if q > 0:
-            st.session_state.positions[stock] = q
-            st.session_state.balance -= q * price
-            send_telegram(f"📈 BUY Alert: {stock} at ₹{price:.2f}")
-
-    elif signal == "SELL" and qty > 0:
-        st.session_state.balance += qty * price
-        st.session_state.positions[stock] = 0
-        send_telegram(f"📉 SELL Alert: {stock} at ₹{price:.2f}")
-
-    st.session_state.history.append({
-        "Stock": stock,
-        "Signal": signal,
-        "Price": round(price, 2),
-        "Time": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
-    })
 
 # ================= UI DASHBOARD =================
 st.subheader("📡 Live ML Scanner & Charts")
@@ -156,35 +116,38 @@ for i, stock in enumerate(stocks):
 
     with cols[i]:
         st.metric(label=stock, value=signal, delta=f"₹{price:.2f}" if price > 0 else "")
-        
-        # Chota interactive chart (Pichle 30 din ka trend)
         if df is not None:
             st.line_chart(df['Close'].tail(30), height=150)
 
-    if signal in ["BUY","SELL"] and price > 0:
-        trade(stock, signal, price)
+    # Trade logic
+    if stock not in st.session_state.positions:
+        st.session_state.positions[stock] = 0
+    qty = st.session_state.positions[stock]
+
+    if signal == "BUY" and qty == 0 and price > 0:
+        invest = st.session_state.balance * 0.1
+        q = int(invest / price)
+        if q > 0:
+            st.session_state.positions[stock] = q
+            st.session_state.balance -= q * price
+            send_telegram(f"📈 BUY Alert: {stock} at ₹{price:.2f}")
+
+    elif signal == "SELL" and qty > 0 and price > 0:
+        st.session_state.balance += qty * price
+        st.session_state.positions[stock] = 0
+        send_telegram(f"📉 SELL Alert: {stock} at ₹{price:.2f}")
 
 st.divider()
 
-# ================= PORTFOLIO & HISTORY =================
 col1, col2 = st.columns(2)
-
 with col1:
     st.subheader("💼 Virtual Portfolio")
     st.write(f"**Cash Balance:** ₹{st.session_state.balance:,.2f}")
     for s, q in st.session_state.positions.items():
         if q > 0:
             st.write(f"- {s}: {q} Shares")
-
 with col2:
-    st.subheader("📜 Trade History")
-    if st.session_state.history:
-        st.dataframe(pd.DataFrame(st.session_state.history).tail(5), use_container_width=True)
-    else:
-        st.info("No trades executed yet.")
-
-# ================= SYSTEM TEST =================
-st.divider()
-if st.button("Test Telegram Connection"):
-    send_telegram("🔥 QuantEdge AI is Online & Ready!")
-    st.success("Test message sent!")
+    st.subheader("🛠 System Testing")
+    if st.button("Test Telegram Connection"):
+        send_telegram("🔥 QuantEdge AI is Online & Ready!")
+        st.success("Test message sent!")
