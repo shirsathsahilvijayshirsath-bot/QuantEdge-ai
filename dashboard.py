@@ -159,7 +159,35 @@ for i, stock in enumerate(stocks):
         send_telegram(f"📉 SELL Alert: {stock} at ₹{price:.2f}")
 
 st.divider()
+# ================= RISK MANAGEMENT =================
+STOP_LOSS = 0.03   # 3%
+TARGET = 0.06      # 6%
 
+for s, q in st.session_state.positions.items():
+    if q > 0:
+        df2 = get_data(s)
+        if df2 is None or len(df2) == 0:
+            continue
+
+        current_price = float(df2["Close"].iloc[-1])
+        entry = st.session_state.entry_price.get(s)
+
+        if entry is None:
+            continue
+
+        # STOP LOSS
+        if current_price <= entry * (1 - STOP_LOSS):
+            st.session_state.balance += q * current_price
+            st.session_state.positions[s] = 0
+
+            send_telegram(f"🛑 STOP LOSS HIT: {s} at ₹{current_price:.2f}")
+
+        # TARGET PROFIT
+        elif current_price >= entry * (1 + TARGET):
+            st.session_state.balance += q * current_price
+            st.session_state.positions[s] = 0
+
+            send_telegram(f"🎯 TARGET HIT: {s} at ₹{current_price:.2f}")
 col1, col2 = st.columns(2)
 with col1:
     st.subheader("💼 Virtual Portfolio")
