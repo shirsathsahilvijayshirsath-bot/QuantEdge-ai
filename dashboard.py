@@ -35,7 +35,6 @@ st.title("📊 QuantEdge AI - Master Version")
 mode = st.radio("Select Trading Mode", ["Swing", "Intraday"])
 
 # ================= TELEGRAM =================
-# Yahan apne asli Token aur Chat ID daalein
 TOKEN = "8629163881:AAHrO4n9KpDNT0tMR1DoRvXeJeZ5VEIWCCA" 
 CHAT_ID = "7602586865"
 
@@ -51,7 +50,7 @@ def send_telegram(msg):
 if "balance" not in st.session_state:
     st.session_state.balance = 100000.0
     st.session_state.positions = {}
-    st.session_state.entry_price = {} # FIXED: Entry price save karne ke liye
+    st.session_state.entry_price = {}
     st.session_state.history = []
 
 # ================= EXPANDED STOCK LIST =================
@@ -80,13 +79,13 @@ stocks = [
 
 # ================= DATA & ENGINE =================
 @st.cache_data(ttl=120)
-def get_data(symbol):
+def get_data(symbol, current_mode):
     try:
         stock = yf.Ticker(symbol)
-        if mode == "Intraday": 
-            df = stock.history(period="1d", interval="5m") # 🔥 intraday 
+        if current_mode == "Intraday": 
+            df = stock.history(period="1d", interval="5m")
         else: 
-            df = stock.history(period="1y") # swing 
+            df = stock.history(period="1y")
             
         if df is None or df.empty: 
             return None 
@@ -94,7 +93,7 @@ def get_data(symbol):
     except: 
         return None 
 
-def advanced_engine(df):
+def advanced_engine(df, current_mode):
     if df is None or len(df) < 50:
         return "HOLD", 0
 
@@ -121,8 +120,7 @@ def advanced_engine(df):
         prediction = model.predict(latest_data[features])[0] 
         confidence = model.predict_proba(latest_data[features])[0].max() * 100 
         
-        # 🔥 MODE BASED LOGIC 
-        if mode == "Intraday":
+        if current_mode == "Intraday":
             if prediction == 1 and rsi < 45 and price > sma50:
                 return "BUY", price
             elif prediction == 0 and rsi > 60:
@@ -145,12 +143,11 @@ st.subheader("📡 Live ML Scanner & Charts")
 if st.button("🔄 Refresh Market Data"):
     st.cache_data.clear()
 
-# FIXED: Phone friendly layout
 cols = st.columns(2)
 
 for i, stock in enumerate(stocks):
-    df = get_data(stock)
-    signal, price = advanced_engine(df)
+    df = get_data(stock, mode)
+    signal, price = advanced_engine(df, mode)
 
     with cols[i % 2]: 
         st.metric(label=stock, value=signal, delta=f"₹{price:.2f}" if price > 0 else "") 
@@ -168,15 +165,15 @@ for i, stock in enumerate(stocks):
         if q > 0: 
             st.session_state.positions[stock] = q 
             st.session_state.balance -= q * price 
-            st.session_state.entry_price[stock] = price # FIXED: Saving entry price
-            send_telegram(f"📈 BUY Alert: {stock} at ₹{price:.2f}") 
+            st.session_state.entry_price[stock] = price
+            send_telegram(f"📈 [{mode}] BUY Alert: {stock} at ₹{price:.2f}") 
             
     elif signal == "SELL" and qty > 0 and price > 0: 
         st.session_state.balance += qty * price 
         st.session_state.positions[stock] = 0 
         if stock in st.session_state.entry_price:
             del st.session_state.entry_price[stock]
-        send_telegram(f"📉 SELL Alert: {stock} at ₹{price:.2f}") 
+        send_telegram(f"📉 [{mode}] SELL Alert: {stock} at ₹{price:.2f}") 
 
 st.divider()
 
@@ -188,13 +185,12 @@ else:
     STOP_LOSS = 0.03
     TARGET = 0.06
 
-# FIXED: Proper IST Timezone setup
 ist = pytz.timezone('Asia/Kolkata')
 now = datetime.now(ist)
 
 for s, q in list(st.session_state.positions.items()):
     if q > 0:
-        df2 = get_data(s)
+        df2 = get_data(s, mode)
         if df2 is None or len(df2) == 0:
             continue
 
@@ -207,19 +203,19 @@ for s, q in list(st.session_state.positions.items()):
         if mode == "Intraday" and now.hour == 15 and now.minute >= 20:
             st.session_state.balance += q * current_price 
             st.session_state.positions[s] = 0 
-            send_telegram(f"⏳ EOD EXIT: {s} at ₹{current_price:.2f}") 
+            send_telegram(f"⏳ [{mode}] EOD EXIT: {s} at ₹{current_price:.2f}") 
             
         # STOP LOSS
         elif current_price <= entry * (1 - STOP_LOSS): 
             st.session_state.balance += q * current_price 
             st.session_state.positions[s] = 0 
-            send_telegram(f"🛑 STOP LOSS HIT: {s} at ₹{current_price:.2f}") 
+            send_telegram(f"🛑 [{mode}] STOP LOSS HIT: {s} at ₹{current_price:.2f}") 
             
         # TARGET PROFIT 
         elif current_price >= entry * (1 + TARGET): 
             st.session_state.balance += q * current_price 
             st.session_state.positions[s] = 0 
-            send_telegram(f"🎯 TARGET HIT: {s} at ₹{current_price:.2f}") 
+            send_telegram(f"🎯 [{mode}] TARGET HIT: {s} at ₹{current_price:.2f}") 
 
 col1, col2 = st.columns(2)
 with col1:
@@ -231,5 +227,5 @@ with col1:
 with col2:
     st.subheader("🛠 System Testing")
     if st.button("Test Telegram Connection"):
-        send_telegram("🔥 QuantEdge AI is Online & Ready with Intraday features!")
+        send_telegram(f"🔥 QuantEdge AI is Online! Strategy: {mode}")
         st.success("Test message sent!")
