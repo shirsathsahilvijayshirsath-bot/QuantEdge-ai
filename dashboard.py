@@ -34,6 +34,15 @@ if not check_password():
 st.title("📊 QuantEdge AI - Master Version")
 mode = st.radio("Select Trading Mode", ["Swing", "Intraday"])
 
+# ================= CONFIGURING RISK PERCENTAGES EARLIER =================
+# Isko upar shift kiya taaki BUY alert ke time use ho sake
+if mode == "Intraday":
+    STOP_LOSS_PCT = 0.01 # 1%
+    TARGET_PCT = 0.02    # 2%
+else:
+    STOP_LOSS_PCT = 0.03 # 3%
+    TARGET_PCT = 0.06    # 6%
+
 # ================= TELEGRAM =================
 TOKEN = "8629163881:AAHrO4n9KpDNT0tMR1DoRvXeJeZ5VEIWCCA" 
 CHAT_ID = "7602586865"
@@ -166,7 +175,16 @@ for i, stock in enumerate(stocks):
             st.session_state.positions[stock] = q 
             st.session_state.balance -= q * price 
             st.session_state.entry_price[stock] = price
-            send_telegram(f"📈 [{mode}] BUY Alert: {stock} at ₹{price:.2f}") 
+            
+            # UPGRADE: Telegram message mein Target aur SL calculation
+            calc_tg = price * (1 + TARGET_PCT)
+            calc_sl = price * (1 - STOP_LOSS_PCT)
+            
+            msg = (f"📈 [{mode}] BUY Alert: {stock}\n"
+                   f"💰 Entry Price: ₹{price:.2f}\n"
+                   f"🎯 Target Price: ₹{calc_tg:.2f}\n"
+                   f"🛑 Stop Loss: ₹{calc_sl:.2f}")
+            send_telegram(msg) 
             
     elif signal == "SELL" and qty > 0 and price > 0: 
         st.session_state.balance += qty * price 
@@ -178,13 +196,6 @@ for i, stock in enumerate(stocks):
 st.divider()
 
 # ================= RISK MANAGEMENT =================
-if mode == "Intraday":
-    STOP_LOSS = 0.01 # 1%
-    TARGET = 0.02 # 2%
-else:
-    STOP_LOSS = 0.03
-    TARGET = 0.06
-
 ist = pytz.timezone('Asia/Kolkata')
 now = datetime.now(ist)
 
@@ -206,24 +217,41 @@ for s, q in list(st.session_state.positions.items()):
             send_telegram(f"⏳ [{mode}] EOD EXIT: {s} at ₹{current_price:.2f}") 
             
         # STOP LOSS
-        elif current_price <= entry * (1 - STOP_LOSS): 
+        elif current_price <= entry * (1 - STOP_LOSS_PCT): 
             st.session_state.balance += q * current_price 
             st.session_state.positions[s] = 0 
             send_telegram(f"🛑 [{mode}] STOP LOSS HIT: {s} at ₹{current_price:.2f}") 
             
         # TARGET PROFIT 
-        elif current_price >= entry * (1 + TARGET): 
+        elif current_price >= entry * (1 + TARGET_PCT): 
             st.session_state.balance += q * current_price 
             st.session_state.positions[s] = 0 
             send_telegram(f"🎯 [{mode}] TARGET HIT: {s} at ₹{current_price:.2f}") 
 
+# ================= UI PORTFOLIO DISPLAY UPGRADE =================
 col1, col2 = st.columns(2)
 with col1:
     st.subheader("💼 Virtual Portfolio")
-    st.write(f"Cash Balance: ₹{st.session_state.balance:,.2f}")
+    st.write(f"**Cash Balance:** ₹{st.session_state.balance:,.2f}")
+    
+    # UPGRADE: UI par details dikhane ka logic
+    active_trades = False
     for s, q in st.session_state.positions.items():
         if q > 0:
-            st.write(f"- {s}: {q} Shares")
+            active_trades = True
+            entry = st.session_state.entry_price.get(s, 0)
+            target_p = entry * (1 + TARGET_PCT)
+            sl_p = entry * (1 - STOP_LOSS_PCT)
+            
+            st.markdown(f"### 📦 {s}")
+            st.write(f"- **Qty:** {q} Shares")
+            st.write(f"- **Entry Price:** ₹{entry:.2f}")
+            st.write(f"- **Target (Exit):** ₹{target_p:.2f} | **Stop Loss:** ₹{sl_p:.2f}")
+            st.divider()
+            
+    if not active_trades:
+        st.info("Abhi portfolio mein koi active trade nahi hai.")
+
 with col2:
     st.subheader("🛠 System Testing")
     if st.button("Test Telegram Connection"):
