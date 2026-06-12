@@ -31,11 +31,10 @@ def check_password():
 if not check_password():
     st.stop()
 
-st.title("📊 QuantEdge AI - Master Version")
+st.title("📊 QuantEdge AI - Pro Institutional Version")
 mode = st.radio("Select Trading Mode", ["Swing", "Intraday"])
 
-# ================= CONFIGURING RISK PERCENTAGES EARLIER =================
-# Isko upar shift kiya taaki BUY alert ke time use ho sake
+# ================= RISK & REWARD CONFIG =================
 if mode == "Intraday":
     STOP_LOSS_PCT = 0.01 # 1%
     TARGET_PCT = 0.02    # 2%
@@ -60,7 +59,6 @@ if "balance" not in st.session_state:
     st.session_state.balance = 100000.0
     st.session_state.positions = {}
     st.session_state.entry_price = {}
-    st.session_state.history = []
 
 # ================= EXPANDED STOCK LIST =================
 stocks = [
@@ -86,13 +84,13 @@ stocks = [
     "COLPAL.NS", "PGHH.NS", "GET&D.NS", "NETWEB.NS"
 ]
 
-# ================= DATA & ENGINE =================
+# ================= DATA & ADVANCED ENGINE =================
 @st.cache_data(ttl=120)
 def get_data(symbol, current_mode):
     try:
         stock = yf.Ticker(symbol)
         if current_mode == "Intraday": 
-            df = stock.history(period="1d", interval="5m")
+            df = stock.history(period="5d", interval="5m")
         else: 
             df = stock.history(period="1y")
             
@@ -104,50 +102,69 @@ def get_data(symbol, current_mode):
 
 def advanced_engine(df, current_mode):
     if df is None or len(df) < 50:
-        return "HOLD", 0
+        return "HOLD", 0, 0
 
+    # 1. Base Indicators
     df['SMA_50'] = df['Close'].rolling(window=50).mean() 
     delta = df['Close'].diff() 
     gain = delta.clip(lower=0).rolling(14).mean() 
     loss = (-delta.clip(upper=0)).rolling(14).mean() 
     rs = gain / loss 
     df['RSI'] = 100 - (100 / (1 + rs)) 
+    
+    # 2. UPGRADE: MACD (Momentum)
+    exp1 = df['Close'].ewm(span=12, adjust=False).mean()
+    exp2 = df['Close'].ewm(span=26, adjust=False).mean()
+    df['MACD'] = exp1 - exp2
+    df['Signal_Line'] = df['MACD'].ewm(span=9, adjust=False).mean()
+    
+    # 3. UPGRADE: Bollinger Bands (Volatility)
+    df['BB_Mid'] = df['Close'].rolling(window=20).mean()
+    df['BB_Std'] = df['Close'].rolling(window=20).std()
+    df['BB_Up'] = df['BB_Mid'] + (df['BB_Std'] * 2)
+    df['BB_Low'] = df['BB_Mid'] - (df['BB_Std'] * 2)
+
     df['Tomorrow_Close'] = df['Close'].shift(-1) 
     df['Target'] = (df['Tomorrow_Close'] > df['Close']).astype(int) 
     df = df.dropna() 
     
     try: 
+        # Current Values
         price = float(df["Close"].iloc[-1]) 
         rsi = float(df["RSI"].iloc[-1]) 
         sma50 = float(df["SMA_50"].iloc[-1]) 
+        macd = float(df["MACD"].iloc[-1])
+        signal_line = float(df["Signal_Line"].iloc[-1])
+        bb_low = float(df["BB_Low"].iloc[-1])
         
-        features = ['Close', 'Volume', 'SMA_50', 'RSI'] 
+        # ML Brain Update
+        features = ['Close', 'Volume', 'SMA_50', 'RSI', 'MACD', 'BB_Up', 'BB_Low'] 
         model = RandomForestClassifier(n_estimators=100, random_state=42) 
         model.fit(df[features], df['Target']) 
         
         latest_data = df.iloc[-1:] 
         prediction = model.predict(latest_data[features])[0] 
-        confidence = model.predict_proba(latest_data[features])[0].max() * 100 
         
-        if current_mode == "Intraday":
-            if prediction == 1 and rsi < 45 and price > sma50:
-                return "BUY", price
-            elif prediction == 0 and rsi > 60:
-                return "SELL", price
-            else:
-                return "HOLD", price
-        else: # Swing mode
-            if prediction == 1 and rsi < 40 and price > sma50 and confidence > 55:
-                return "BUY", price
-            elif prediction == 0 and rsi > 65:
-                return "SELL", price
-            else:
-                return "HOLD", price
+        # 4. UPGRADE: The Conviction Scoring System (Out of 100)
+        score = 0
+        if prediction == 1: score += 40               # AI thinks it will go up
+        if rsi < 45: score += 20                      # Sasta mil raha hai
+        if price > sma50: score += 10                 # Long term trend positive hai
+        if macd > signal_line: score += 15            # Momentum strong hai
+        if price <= (bb_low * 1.02): score += 15      # Bottom pakad liya hai (Bounce zone)
+
+        # Execution Logic Based on Score
+        if score >= 75:  # Sniper Entry: Sirf Top Grade
+            return "BUY", price, score
+        elif prediction == 0 and rsi > 70:
+            return "SELL", price, score
+        else:
+            return "HOLD", price, score
     except:
-        return "HOLD", 0
+        return "HOLD", 0, 0
 
 # ================= UI DASHBOARD =================
-st.subheader("📡 Live ML Scanner & Charts")
+st.subheader("📡 Pro ML Scanner (With Conviction Score)")
 
 if st.button("🔄 Refresh Market Data"):
     st.cache_data.clear()
@@ -156,14 +173,14 @@ cols = st.columns(2)
 
 for i, stock in enumerate(stocks):
     df = get_data(stock, mode)
-    signal, price = advanced_engine(df, mode)
+    signal, price, score = advanced_engine(df, mode)
 
     with cols[i % 2]: 
-        st.metric(label=stock, value=signal, delta=f"₹{price:.2f}" if price > 0 else "") 
+        # UI mein Score dikhayega
+        st.metric(label=f"{stock} (Score: {score}/100)", value=signal, delta=f"₹{price:.2f}" if price > 0 else "") 
         if df is not None: 
             st.line_chart(df['Close'].tail(30), height=140) 
             
-    # Trade logic 
     if stock not in st.session_state.positions: 
         st.session_state.positions[stock] = 0 
     qty = st.session_state.positions[stock] 
@@ -176,11 +193,11 @@ for i, stock in enumerate(stocks):
             st.session_state.balance -= q * price 
             st.session_state.entry_price[stock] = price
             
-            # UPGRADE: Telegram message mein Target aur SL calculation
             calc_tg = price * (1 + TARGET_PCT)
             calc_sl = price * (1 - STOP_LOSS_PCT)
             
-            msg = (f"📈 [{mode}] BUY Alert: {stock}\n"
+            msg = (f"🟢 [{mode}] HIGH CONVICTION BUY: {stock}\n"
+                   f"💯 AI Score: {score}/100\n"
                    f"💰 Entry Price: ₹{price:.2f}\n"
                    f"🎯 Target Price: ₹{calc_tg:.2f}\n"
                    f"🛑 Stop Loss: ₹{calc_sl:.2f}")
@@ -191,7 +208,7 @@ for i, stock in enumerate(stocks):
         st.session_state.positions[stock] = 0 
         if stock in st.session_state.entry_price:
             del st.session_state.entry_price[stock]
-        send_telegram(f"📉 [{mode}] SELL Alert: {stock} at ₹{price:.2f}") 
+        send_telegram(f"🔴 [{mode}] AI SELL Alert: {stock} at ₹{price:.2f}") 
 
 st.divider()
 
@@ -210,31 +227,27 @@ for s, q in list(st.session_state.positions.items()):
         if entry is None: 
             continue 
             
-        # 3:20 PM EOD EXIT LOGIC
         if mode == "Intraday" and now.hour == 15 and now.minute >= 20:
             st.session_state.balance += q * current_price 
             st.session_state.positions[s] = 0 
             send_telegram(f"⏳ [{mode}] EOD EXIT: {s} at ₹{current_price:.2f}") 
             
-        # STOP LOSS
         elif current_price <= entry * (1 - STOP_LOSS_PCT): 
             st.session_state.balance += q * current_price 
             st.session_state.positions[s] = 0 
             send_telegram(f"🛑 [{mode}] STOP LOSS HIT: {s} at ₹{current_price:.2f}") 
             
-        # TARGET PROFIT 
         elif current_price >= entry * (1 + TARGET_PCT): 
             st.session_state.balance += q * current_price 
             st.session_state.positions[s] = 0 
             send_telegram(f"🎯 [{mode}] TARGET HIT: {s} at ₹{current_price:.2f}") 
 
-# ================= UI PORTFOLIO DISPLAY UPGRADE =================
+# ================= UI PORTFOLIO DISPLAY =================
 col1, col2 = st.columns(2)
 with col1:
     st.subheader("💼 Virtual Portfolio")
     st.write(f"**Cash Balance:** ₹{st.session_state.balance:,.2f}")
     
-    # UPGRADE: UI par details dikhane ka logic
     active_trades = False
     for s, q in st.session_state.positions.items():
         if q > 0:
@@ -246,14 +259,12 @@ with col1:
             st.markdown(f"### 📦 {s}")
             st.write(f"- **Qty:** {q} Shares")
             st.write(f"- **Entry Price:** ₹{entry:.2f}")
-            st.write(f"- **Target (Exit):** ₹{target_p:.2f} | **Stop Loss:** ₹{sl_p:.2f}")
+            st.write(f"- **Target:** ₹{target_p:.2f} | **SL:** ₹{sl_p:.2f}")
             st.divider()
             
     if not active_trades:
         st.info("Abhi portfolio mein koi active trade nahi hai.")
 
 with col2:
-    st.subheader("🛠 System Testing")
-    if st.button("Test Telegram Connection"):
-        send_telegram(f"🔥 QuantEdge AI is Online! Strategy: {mode}")
-        st.success("Test message sent!")
+    st.subheader("🛠 System Info")
+    st.info("Powered by RandomForest ML, MACD, Bollinger Bands, and Conviction Scoring Algorithm.")
