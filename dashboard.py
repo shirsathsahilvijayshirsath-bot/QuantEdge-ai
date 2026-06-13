@@ -236,13 +236,10 @@ def advanced_engine(symbol, df, current_mode):
     except:
         return "HOLD", 0, 0, ""
 
-# ================= UI DASHBOARD =================
-st.subheader("📡 Ultimate Apex Scanner (With Nifty Radar)")
-
+# ================= THE MARKET REGIME CHECK =================
 if st.button("🔄 Refresh Market Data"):
     st.cache_data.clear()
 
-# ================= THE MARKET REGIME CHECK =================
 is_bullish, regime_status = get_market_regime(mode)
 
 if is_bullish:
@@ -255,11 +252,23 @@ if mode == "Intraday" and (now.hour > 14 or (now.hour == 14 and now.minute >= 30
     can_take_new_trades = False
     st.warning("⚠️ No-Trade Zone Active: Intraday fresh entries are blocked after 2:30 PM.")
 
+st.divider()
+
+# ================= UI DASHBOARD CONTAINERS =================
+# Container banaya taaki Leaderboard sabse upar print ho sake
+top_10_container = st.container()
+st.divider()
+st.subheader("📡 Full Market Radar")
+
 cols = st.columns(2)
+leaderboard = [] # Aapka khali dabbi (list) initialize kiya
 
 for i, stock in enumerate(stocks):
     df = get_data(stock, mode)
     signal, price, score, status_msg = advanced_engine(stock, df, mode) 
+    
+    # Leaderboard ke liye data ikattha karna
+    leaderboard.append((stock, signal, score, price, status_msg))
 
     with cols[i % 2]: 
         st.metric(label=f"{stock} (Score: {score})", value=signal, delta=f"₹{price:.2f}" if price > 0 else "") 
@@ -270,17 +279,16 @@ for i, stock in enumerate(stocks):
         st.session_state.positions[stock] = 0 
     qty = st.session_state.positions[stock] 
     
+    # Trade Execution Logic
     if signal == "BUY" and qty == 0 and price > 0 and can_take_new_trades: 
-        
-        # UPGRADE: Capital Allocation linked to Market Regime
         if not is_bullish:
-            alloc_pct = 0.05 # Bear Market (Defensive Mode) - Sirf 5% Paisa
+            alloc_pct = 0.05 
             emoji = "🛡️ [DEFENSIVE]"
         elif score >= 85:
-            alloc_pct = 0.15 # Bull Market + A+ Setup - 15% Paisa
+            alloc_pct = 0.15 
             emoji = "🟢 [AGGRESSIVE]"
         else:
-            alloc_pct = 0.10 # Normal Setup - 10% Paisa
+            alloc_pct = 0.10 
             emoji = "🔵 [STANDARD]"
             
         invest = st.session_state.balance * alloc_pct 
@@ -312,6 +320,21 @@ for i, stock in enumerate(stocks):
             del st.session_state.entry_price[stock]
             del st.session_state.highest_price[stock]
         send_telegram(f"🔴 [{mode}] AI SELL Alert: {stock} at ₹{price:.2f}") 
+
+# ================= TOP 10 LEADERBOARD DISPLAY =================
+with top_10_container:
+    st.subheader("🏆 Top 10 Opportunities")
+    # Score (index 2) ke hisaab se descending order mein sort karna
+    leaderboard = sorted(leaderboard, key=lambda x: x[2], reverse=True)
+    
+    for s in leaderboard[:10]:
+        # Colour coding based on signal
+        if s[1] == "BUY":
+            st.markdown(f"**{s[0]}** | 🟢 **{s[1]}** | Score: **{s[2]}** | Price: ₹{s[3]:.2f} | Info: {s[4]}")
+        elif s[1] == "SELL":
+            st.markdown(f"**{s[0]}** | 🔴 **{s[1]}** | Score: **{s[2]}** | Price: ₹{s[3]:.2f} | Info: {s[4]}")
+        else:
+            st.markdown(f"**{s[0]}** | ⚪ {s[1]} | Score: {s[2]} | Price: ₹{s[3]:.2f} | Info: {s[4]}")
 
 st.divider()
 
@@ -381,4 +404,4 @@ with col1:
 
 with col2:
     st.subheader("🛠 System Info")
-    st.info("Ultimate Features:\n- Nifty 50 Market Trend Filter\n- Institutional Capital Allocation\n- VWAP Intraday Radar\n- Fundamental Sieve\n- Trailing SL System.")
+    st.info("Apex System Active:\n- Top 10 Leaderboard\n- Nifty Market Regime Filter\n- Institutional Position Sizing\n- VWAP Intraday Radar\n- Fundamental Sieve\n- Trailing SL System.")
