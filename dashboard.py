@@ -255,13 +255,12 @@ if mode == "Intraday" and (now.hour > 14 or (now.hour == 14 and now.minute >= 30
 st.divider()
 
 # ================= UI DASHBOARD CONTAINERS =================
-# Container banaya taaki Leaderboard sabse upar print ho sake
 top_10_container = st.container()
 st.divider()
 st.subheader("📡 Full Market Radar")
 
 cols = st.columns(2)
-leaderboard = [] # Aapka khali dabbi (list) initialize kiya
+leaderboard = [] 
 
 for i, stock in enumerate(stocks):
     df = get_data(stock, mode)
@@ -279,7 +278,6 @@ for i, stock in enumerate(stocks):
         st.session_state.positions[stock] = 0 
     qty = st.session_state.positions[stock] 
     
-    # Trade Execution Logic
     if signal == "BUY" and qty == 0 and price > 0 and can_take_new_trades: 
         if not is_bullish:
             alloc_pct = 0.05 
@@ -321,20 +319,36 @@ for i, stock in enumerate(stocks):
             del st.session_state.highest_price[stock]
         send_telegram(f"🔴 [{mode}] AI SELL Alert: {stock} at ₹{price:.2f}") 
 
-# ================= TOP 10 LEADERBOARD DISPLAY =================
+# ================= TOP OPPORTUNITIES DISPLAY (USER UPGRADE) =================
 with top_10_container:
-    st.subheader("🏆 Top 10 Opportunities")
-    # Score (index 2) ke hisaab se descending order mein sort karna
+    # Score ke hisaab se rank karna
     leaderboard = sorted(leaderboard, key=lambda x: x[2], reverse=True)
     
-    for s in leaderboard[:10]:
-        # Colour coding based on signal
-        if s[1] == "BUY":
-            st.markdown(f"**{s[0]}** | 🟢 **{s[1]}** | Score: **{s[2]}** | Price: ₹{s[3]:.2f} | Info: {s[4]}")
-        elif s[1] == "SELL":
-            st.markdown(f"**{s[0]}** | 🔴 **{s[1]}** | Score: **{s[2]}** | Price: ₹{s[3]:.2f} | Info: {s[4]}")
-        else:
-            st.markdown(f"**{s[0]}** | ⚪ {s[1]} | Score: {s[2]} | Price: ₹{s[3]:.2f} | Info: {s[4]}")
+    # Screen ko 2 hisson mein baant diya
+    col_buy, col_sell = st.columns(2)
+    
+    with col_buy:
+        st.subheader("🟢 Top BUY Opportunities")
+        buy_found = False
+        for s in leaderboard:
+            if s[1] == "BUY":
+                buy_found = True
+                # Main info ke sath Indicator status bhi add kar diya
+                st.markdown(f"**{s[0]}** | Score: **{s[2]}** | Price: ₹{s[3]:.2f} | *{s[4]}*")
+        
+        if not buy_found:
+            st.info("No strong BUY signals at the moment.")
+                
+    with col_sell:
+        st.subheader("🔴 Top SELL Opportunities")
+        sell_found = False
+        for s in leaderboard:
+            if s[1] == "SELL":
+                sell_found = True
+                st.markdown(f"**{s[0]}** | Score: **{s[2]}** | Price: ₹{s[3]:.2f} | *{s[4]}*")
+                
+        if not sell_found:
+            st.info("No strong SELL signals at the moment.")
 
 st.divider()
 
@@ -404,4 +418,4 @@ with col1:
 
 with col2:
     st.subheader("🛠 System Info")
-    st.info("Apex System Active:\n- Top 10 Leaderboard\n- Nifty Market Regime Filter\n- Institutional Position Sizing\n- VWAP Intraday Radar\n- Fundamental Sieve\n- Trailing SL System.")
+    st.info("Apex System Active:\n- Clean UI Leaderboard\n- Nifty Market Regime Filter\n- Institutional Position Sizing\n- VWAP Intraday Radar\n- Fundamental Sieve\n- Trailing SL System.")
