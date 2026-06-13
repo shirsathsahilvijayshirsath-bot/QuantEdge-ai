@@ -3,5 +3,4 @@ yfinance
 pandas
 requests
 scikit-learn
-xgboost
 pytz
