@@ -1,100 +1,91 @@
+
 import streamlit as st
+import yfinance as yf
 import pandas as pd
-import numpy as np
-import time
-from datetime import date
+import requests
 from sklearn.ensemble import RandomForestClassifier
-from xgboost import XGBClassifier
+from datetime import datetime
+import pytz
 
-# --- CONFIGURATION ---
-stocks_list = ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'SBIN', 'LT']
-mode = "Intraday"
+# Page config
+st.set_page_config(page_title="QuantEdge AI", layout="wide")
 
-# --- 1. INITIALIZATION & CACHE ---
-if "ml_models" not in st.session_state: st.session_state.ml_models = {}
-if "last_trained" not in st.session_state: st.session_state.last_trained = {}
-if "trade_count" not in st.session_state: st.session_state.trade_count = 0
-if "last_day" not in st.session_state: st.session_state.last_day = date.today()
-if "positions" not in st.session_state: st.session_state.positions = {}
-if "entry_price" not in st.session_state: st.session_state.entry_price = {}
-if "trail_price" not in st.session_state: st.session_state.trail_price = {}
-if "balance" not in st.session_state: st.session_state.balance = 100000.0
+# ================= SECURITY LOGIN =================
+MY_PASSWORD = "QuantEdge2026"
+def check_password():
+    if "password_correct" not in st.session_state: st.session_state["password_correct"] = False
+    if not st.session_state["password_correct"]: 
+        st.title("🔒 Security Gateway") 
+        if st.text_input("Apna Password Darj Karein:", type="password") == MY_PASSWORD: 
+            st.session_state["password_correct"] = True
+            st.rerun()
+        st.stop()
+check_password()
 
-if st.session_state.last_day != date.today():
-    st.session_state.trade_count = 0
-    st.session_state.last_day = date.today()
+st.title("📊 QuantEdge AI - Ultimate Apex Engine")
+mode = st.radio("Select Trading Mode", ["Swing", "Intraday"])
 
-MAX_TRADES = 7
+# ================= SESSION =================
+if "balance" not in st.session_state:
+    st.session_state.balance = 100000.0
+    st.session_state.positions = {}
+    st.session_state.entry_price = {}
+    st.session_state.highest_price = {}
 
-# --- 2. CORE FUNCTIONS (Data & AI) ---
-def get_data(stock, mode):
-    # Yahan apna API/Yahoo Finance logic lagayein
-    return pd.DataFrame(np.random.randn(100, 4), columns=['Open', 'High', 'Low', 'Close']) 
+# ================= STOCK LIST (Unlimited) =================
+stocks = [
+    "TATAMOTORS.NS", "M&M.NS", "DLF.NS", "BRITANNIA.NS", "BHARTIARTL.NS", "SBIN.NS",
+    "KOTAKBANK.NS", "ZOMATO.NS", "TITAN.NS", "MAXHEALTH.NS", "HAL.NS", "LTIM.NS",
+    "TORNTPHARM.NS", "BBOX.NS", "CYIENT.NS", "E2E.NS", "ASALCBR.NS", "SUZLON.NS",
+    "ABB.NS", "CCL.NS", "SVRL.NS", "GESHIP.NS", "TDPOWERSYS.NS", "ANANDRATHI.NS",
+    "CHOLAHLDNG.NS", "PRESTIGE.NS", "NESCO.NS", "WIPRO.NS", "TECHM.NS", "NIRLON.BO",
+    "GODREJPROP.NS", "HAPPSTMNDS.NS", "TATAELXSI.NS", "MPHASIS.NS", "COFORGE.NS",
+    "PERSISTENT.NS", "HCLTECH.NS", "INFY.NS", "NELCO.NS", "GODFRYPHLP.NS", "RADICO.NS",
+    "MAXESTATES.NS", "KFINTECH.NS", "NPST.NS", "MCX.NS", "360ONE.NS", "SKIPPER.NS",
+    "RATNAMANI.NS", "KIOCL.NS", "MARUTI.NS", "HYUNDAI.NS", "HINDALCO.NS", "ASIANPAINT.NS",
+    "BAJAJ-AUTO.NS", "BAJAJFINSV.NS", "NESTLEIND.NS", "TRENT.NS", "EICHERMOT.NS", "CIPLA.NS",
+    "LUPIN.NS", "ALKEM.NS", "ABBOTINDIA.NS", "JBCHEPHARM.NS", "GLAXO.NS", "LAURUSLABS.NS",
+    "IPCALAB.NS", "MTARTECH.NS", "VEDL.NS", "HITACHIENRG.NS", "MUTHOOTFIN.NS", "BSE.NS",
+    "CDSL.NS", "TVSMOTOR.NS", "TATATECH.NS", "TATACHEM.NS", "DCMSHRIRAM.NS", "SIEMENS.NS",
+    "BAJAJHLDNG.NS", "TVSHLTD.NS", "MAHSCOOTER.NS", "KIRLOSIND.NS", "PILANIINVS.NS", "INDIGO.NS",
+    "TAALENT.BO", "NTPC.NS", "MOTHERSON.NS", "ZYDUSLIFE.NS", "MAZDOCK.NS", "MCDOWELL-N.NS",
+    "GLOBUSSPR.NS", "INDIAGLYCO.NS", "ABDL.NS", "CUMMINSIND.NS", "DIVISLAB.NS", "PIDILITIND.NS",
+    "NAVINFLUOR.NS", "AETHER.NS", "ALKYLAMINE.NS", "ATUL.NS", "3MINDIA.NS", "SRF.NS",
+    "SOLARINDS.NS", "KELTECHEN.BO", "SHREECEM.NS", "DALBHARAT.NS", "JKCEMENT.NS", "VBL.NS",
+    "AXISBANK.NS", "HINDUNILVR.NS", "EMAMILTD.NS", "GILLETTE.NS", "CUPID.NS", "ZYDUSWELL.NS",
+    "COLPAL.NS", "PGHH.NS", "GET&D.NS", "NETWEB.NS"
+]
 
-def prepare_ml_data(df):
-    # Dummy features (SMA/RSI logic yahan aayega)
-    X = pd.DataFrame(np.random.randn(100, 3), columns=['SMA20', 'RSI', 'VOL'])
-    y = np.random.randint(0, 2, 100)
-    return X, y
+# ================= CORE LOGIC =================
+@st.cache_data(ttl=300)
+def get_data(symbol, mode):
+    try:
+        return yf.Ticker(symbol).history(period="5d" if mode == "Intraday" else "1y", interval="5m" if mode == "Intraday" else "1d")
+    except: return None
 
-def train_rf(df):
-    X, y = prepare_ml_data(df)
-    model = RandomForestClassifier().fit(X, y)
-    return model, 0.65 # Acc
+def advanced_engine(df):
+    if df is None or len(df) < 50: return "HOLD", 0, 0
+    df = df.copy()
+    df['SMA_50'] = df['Close'].rolling(50).mean()
+    df['Target'] = (df['Close'].shift(-1) > df['Close']).astype(int)
+    df = df.dropna()
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model.fit(df[['Close', 'SMA_50']], df['Target'])
+    pred = model.predict(df[['Close', 'SMA_50']].tail(1))[0]
+    score = 80 if pred == 1 else 20
+    return ("BUY" if pred == 1 else "SELL"), float(df['Close'].iloc[-1]), score
 
-def train_xgb(df):
-    X, y = prepare_ml_data(df)
-    model = XGBClassifier().fit(X, y)
-    return model, 0.68 # Acc
-
-def get_best_model(stock, df):
-    now = time.time()
-    if stock not in st.session_state.last_trained or now - st.session_state.last_trained[stock] > 300:
-        rf, rf_acc = train_rf(df)
-        xgb, xgb_acc = train_xgb(df)
-        if xgb_acc > rf_acc:
-            st.session_state.ml_models[stock] = (xgb, "XGBoost", xgb_acc)
-        else:
-            st.session_state.ml_models[stock] = (rf, "RandomForest", rf_acc)
-        st.session_state.last_trained[stock] = now
-    return st.session_state.ml_models[stock]
-
-def fast_ai_signal(stock, df):
-    model, name, acc = get_best_model(stock, df)
-    X, _ = prepare_ml_data(df)
-    latest = X.iloc[-1:]
-    pred = model.predict(latest)[0]
-    confidence = np.random.uniform(60, 95) # Replace with model.predict_proba
-    signal = "BUY" if pred == 1 else "SELL"
-    return signal, confidence, name, acc
-
-def risk_reward_ok(price, sl, target):
-    risk = price * sl
-    reward = price * target
-    return (reward / risk) >= 2
-
-# --- 3. MAIN DASHBOARD ---
-st.write("🤖 **AI Engine Active (RF + XGB)**")
+# ================= MAIN UI =================
+st.subheader("📡 Radar Scan")
 leaderboard = []
 
-for stock in stocks_list:
+for stock in stocks:
     df = get_data(stock, mode)
-    if df is not None:
-        signal, confidence, name, acc = fast_ai_signal(stock, df)
-        price = 1000.0 # Mock price
-        leaderboard.append((stock, signal, confidence, price, name, acc))
+    signal, price, score = advanced_engine(df)
+    leaderboard.append((stock, signal, price, score))
 
-leaderboard = [s for s in leaderboard if s[2] > 65 and s[5] > 0.55]
-leaderboard.sort(key=lambda x: x[2], reverse=True)
-
-st.subheader("🤖 AI Leaderboard")
-for s in leaderboard[:10]:
-    st.write(f"**{s[0]}** | {s[1]} | 🔥 {s[2]:.1f}% | ₹{s[3]:.2f} | 🧠 {s[4]} | Acc: {s[5]*100:.1f}%")
-
-# Execution
-if len(leaderboard) > 0 and leaderboard[0][2] > 70:
-    best = leaderboard[0]
-    if risk_reward_ok(best[3], 0.02, 0.04) and st.session_state.trade_count < MAX_TRADES:
-        st.session_state.trade_count += 1
-        st.success(f"🚀 EXECUTING: {best[0]}")
-        st.session_state.positions[best[0]] = 1
+for s in sorted(leaderboard, key=lambda x: x[3], reverse=True):
+    st.write(f"**{s[0]}** | Signal: {s[1]} | Score: {s[3]} | Price: ₹{s[2]:.2f}")
+    if s[1] == "BUY" and s[3] > 70:
+        if st.button(f"Execute {s[0]}", key=s[0]):
+            st.success(f"Trade Executed: {s[0]}")
