@@ -572,6 +572,8 @@ def plot_candlestick(df, symbol, current_mode):
         fig.add_hline(y=70, line_color='#ff4444', line_dash='dot', opacity=0.5, row=3, col=1)
         fig.add_hline(y=30, line_color='#00ff88', line_dash='dot', opacity=0.5, row=3, col=1)
 
+    grid_style = dict(gridcolor='rgba(255,255,255,0.04)', showgrid=True, zeroline=False)
+
     fig.update_layout(
         template='plotly_dark',
         paper_bgcolor='#0a0e1a',
@@ -580,10 +582,14 @@ def plot_candlestick(df, symbol, current_mode):
         showlegend=False,
         xaxis_rangeslider_visible=False,
         margin=dict(l=10, r=10, t=30, b=10),
-        font=dict(color='#7a8fa6', size=11)
+        font=dict(color='#7a8fa6', size=11),
+        xaxis=grid_style,
+        xaxis2=grid_style,
+        xaxis3=grid_style,
+        yaxis=grid_style,
+        yaxis2=grid_style,
+        yaxis3=grid_style,
     )
-    fig.update_xaxes(gridcolor='#ffffff08', showgrid=True)
-    fig.update_yaxes(gridcolor='#ffffff08', showgrid=True)
 
     return fig
 
@@ -880,11 +886,7 @@ with tab2:
 
     if df_chart is not None and len(df_chart) >= 50:
         df_chart = compute_indicators(df_chart, mode)
-        sig, pr, sc, msg, sigs = advanced_engine(selected, df_chart, mode)[0], \
-                                  advanced_engine(selected, df_chart, mode)[1], \
-                                  advanced_engine(selected, df_chart, mode)[2], \
-                                  advanced_engine(selected, df_chart, mode)[3], \
-                                  advanced_engine(selected, df_chart, mode)[4]
+        sig, pr, sc, msg, sigs = advanced_engine(selected, df_chart, mode)
 
         c1, c2, c3, c4 = st.columns(4)
         signal_color = "🟢" if sig == "BUY" else "🔴" if sig == "SELL" else "⚪"
