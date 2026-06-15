@@ -548,7 +548,7 @@ def plot_chart(df, symbol, current_mode):
         xaxis=gs, xaxis2=gs, xaxis3=gs, yaxis=gs, yaxis2=gs, yaxis3=gs
     )
     for y_val, color in [(70,'#ff4444'),(30,'#00ff88'),(80,'#ff8800'),(20,'#00ff88')]:
-        fig.add_hline(y=y_val, line_color=color, line_dash='dot', opacity=0.4, row=3, col=1)
+        fig.add_trace(go.Scatter(x=[df_plot.index[0], df_plot.index[-1]], y=[y_val, y_val], mode="lines", line=dict(color=color, dash="dot", width=0.8), opacity=0.4, showlegend=False), row=3, col=1)
     return fig
 
 # ================= OPTIONS CHAIN =================
@@ -989,19 +989,31 @@ with tab2:
 
         with ch_col:
             fig = plot_chart(df_c, sel, mode)
-            # Add S&R lines to chart
+            # Add S&R lines using shapes (compatible with all plotly versions)
             if sr:
+                shapes = []
+                annotations = []
                 for r in sr['resistances']:
-                    fig.add_hline(y=r, line_color='#ff4444', line_dash='dash',
-                                  opacity=0.5, row=1, col=1,
-                                  annotation_text=f"R {CURRENCY}{r}", annotation_font_color='#ff4444')
-                for s in sr['supports']:
-                    fig.add_hline(y=s, line_color='#00ff88', line_dash='dash',
-                                  opacity=0.5, row=1, col=1,
-                                  annotation_text=f"S {CURRENCY}{s}", annotation_font_color='#00ff88')
-                fig.add_hline(y=sr['pivot'], line_color='#ffaa00', line_dash='dot',
-                              opacity=0.6, row=1, col=1,
-                              annotation_text=f"Pivot {CURRENCY}{sr['pivot']}", annotation_font_color='#ffaa00')
+                    shapes.append(dict(type='line', xref='paper', yref='y',
+                        x0=0, x1=1, y0=r, y1=r,
+                        line=dict(color='#ff4444', width=1, dash='dash'), opacity=0.5))
+                    annotations.append(dict(xref='paper', yref='y', x=1.01, y=r,
+                        text=f"R {CURRENCY}{r}", showarrow=False,
+                        font=dict(color='#ff4444', size=10), xanchor='left'))
+                for s_lvl in sr['supports']:
+                    shapes.append(dict(type='line', xref='paper', yref='y',
+                        x0=0, x1=1, y0=s_lvl, y1=s_lvl,
+                        line=dict(color='#00ff88', width=1, dash='dash'), opacity=0.5))
+                    annotations.append(dict(xref='paper', yref='y', x=1.01, y=s_lvl,
+                        text=f"S {CURRENCY}{s_lvl}", showarrow=False,
+                        font=dict(color='#00ff88', size=10), xanchor='left'))
+                shapes.append(dict(type='line', xref='paper', yref='y',
+                    x0=0, x1=1, y0=sr['pivot'], y1=sr['pivot'],
+                    line=dict(color='#ffaa00', width=1, dash='dot'), opacity=0.6))
+                annotations.append(dict(xref='paper', yref='y', x=1.01, y=sr['pivot'],
+                    text=f"P {CURRENCY}{sr['pivot']}", showarrow=False,
+                    font=dict(color='#ffaa00', size=10), xanchor='left'))
+                fig.update_layout(shapes=shapes, annotations=annotations)
             st.plotly_chart(fig, use_container_width=True)
 
         with sr_col:
@@ -1091,7 +1103,7 @@ with tab3:
                 font=dict(color='#7a8fa6',size=11),
                 xaxis=gs, xaxis2=gs, yaxis=gs, yaxis2=gs
             )
-            fig_pred.add_hline(y=0, line_color='#ffffff33', row=1, col=1)
+            fig_pred.add_hline(y=0, line_color='#ffffff33')
             st.plotly_chart(fig_pred, use_container_width=True)
 
             # Disclaimer
@@ -1178,17 +1190,28 @@ with tab4:
         fig_lb = go.Figure(go.Bar(
             x=list(range(1, len(pnls)+1)), y=pnls,
             marker_color=colors_lb, name="P&L per Trade"))
-        fig_lb.add_hline(y=0, line_color='#ffffff33')
-        fig_lb.add_hline(y=lb['avg_win'],  line_color='#00ff8866', line_dash='dot',
-                         annotation_text="Avg Win", annotation_font_color='#00ff88')
-        fig_lb.add_hline(y=lb['avg_loss'], line_color='#ff444466', line_dash='dot',
-                         annotation_text="Avg Loss", annotation_font_color='#ff4444')
         gs = dict(gridcolor='rgba(255,255,255,0.04)', showgrid=True)
         fig_lb.update_layout(
             template='plotly_dark', paper_bgcolor='#0a0e1a', plot_bgcolor='#0d1520',
             height=300, title="Trade-by-Trade P&L",
             margin=dict(l=8,r=8,t=38,b=8), font=dict(color='#7a8fa6',size=11),
-            xaxis={**gs,'title':'Trade #'}, yaxis={**gs,'title':f'P&L ({CURRENCY})'}
+            xaxis={**gs,'title':'Trade #'}, yaxis={**gs,'title':f'P&L ({CURRENCY})'},
+            shapes=[
+                dict(type='line', xref='paper', yref='y', x0=0, x1=1,
+                     y0=0, y1=0, line=dict(color='#ffffff33', width=1)),
+                dict(type='line', xref='paper', yref='y', x0=0, x1=1,
+                     y0=lb['avg_win'], y1=lb['avg_win'],
+                     line=dict(color='#00ff8866', width=1, dash='dot')),
+                dict(type='line', xref='paper', yref='y', x0=0, x1=1,
+                     y0=lb['avg_loss'], y1=lb['avg_loss'],
+                     line=dict(color='#ff444466', width=1, dash='dot')),
+            ],
+            annotations=[
+                dict(xref='paper', yref='y', x=1.01, y=lb['avg_win'],
+                     text="Avg Win", showarrow=False, font=dict(color='#00ff88', size=10), xanchor='left'),
+                dict(xref='paper', yref='y', x=1.01, y=lb['avg_loss'],
+                     text="Avg Loss", showarrow=False, font=dict(color='#ff4444', size=10), xanchor='left'),
+            ]
         )
         st.plotly_chart(fig_lb, use_container_width=True)
 
@@ -1199,13 +1222,15 @@ with tab4:
             line=dict(color='#00d4ff', width=2),
             marker=dict(size=4, color=['#00ff88' if p > 0 else '#ff4444' for p in [0]+pnls]),
             fill='tozeroy', fillcolor='rgba(0,212,255,0.06)'))
-        fig_eq.add_hline(y=100000, line_color='#ffffff33', line_dash='dot',
-                         annotation_text="Starting Capital")
         fig_eq.update_layout(
             template='plotly_dark', paper_bgcolor='#0a0e1a', plot_bgcolor='#0d1520',
             height=260, title="Portfolio Equity Curve",
             margin=dict(l=8,r=8,t=38,b=8), font=dict(color='#7a8fa6',size=11),
-            xaxis={**gs,'title':'Trade #'}, yaxis={**gs,'title':f'Portfolio Value ({CURRENCY})'}
+            xaxis={**gs,'title':'Trade #'}, yaxis={**gs,'title':f'Portfolio Value ({CURRENCY})'},
+            shapes=[dict(type='line', xref='paper', yref='y', x0=0, x1=1,
+                         y0=100000, y1=100000, line=dict(color='#ffffff33', width=1, dash='dot'))],
+            annotations=[dict(xref='paper', yref='y', x=1.01, y=100000,
+                              text="Start", showarrow=False, font=dict(color='#aaa', size=10), xanchor='left')]
         )
         st.plotly_chart(fig_eq, use_container_width=True)
 
@@ -1538,13 +1563,15 @@ with tab9:
                         fig_bt = go.Figure(go.Bar(
                             x=list(range(1,len(pnls)+1)), y=pnls,
                             marker_color=colors_bt, name="P&L%"))
-                        fig_bt.add_hline(y=0, line_color='#ffffff44')
                         fig_bt.update_layout(
                             template='plotly_dark', paper_bgcolor='#0a0e1a', plot_bgcolor='#0d1520',
                             height=300, title=f"{bt_stk} — Trade P&L",
                             margin=dict(l=8,r=8,t=38,b=8), font=dict(color='#7a8fa6',size=11),
                             xaxis=dict(gridcolor='rgba(255,255,255,0.04)',showgrid=True),
                             yaxis=dict(gridcolor='rgba(255,255,255,0.04)',showgrid=True),
+                            shapes=[dict(type='line', xref='paper', yref='y',
+                                         x0=0, x1=1, y0=0, y1=0,
+                                         line=dict(color='#ffffff44', width=1))]
                         )
                         st.plotly_chart(fig_bt, use_container_width=True)
 
