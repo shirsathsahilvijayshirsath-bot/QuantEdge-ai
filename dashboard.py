@@ -1,4 +1,8 @@
-# ================= IMPORTS =================
+# ================= QUANTEDGE AI v3.0 =================
+# Features: Options Chain, Risk Mgmt, Price Alerts,
+#           Support/Resistance, NSE + Crypto + US Stocks
+# ======================================================
+
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -11,158 +15,64 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from datetime import datetime, timedelta
 import pytz
-import os
-import joblib
-import json
+import math
 
 st.set_page_config(
-    page_title="QuantEdge AI v2.0",
+    page_title="QuantEdge AI v3.0",
     layout="wide",
     page_icon="⚡",
     initial_sidebar_state="expanded"
 )
 
-# ================= CUSTOM CSS =================
+# ================= CSS =================
 st.markdown("""
 <style>
-    /* Dark terminal theme */
-    .stApp {
-        background-color: #0a0e1a;
-        color: #e0e6f0;
+    .stApp { background-color: #0a0e1a; color: #e0e6f0; }
+    div[data-testid="stSidebarContent"] {
+        background-color: #0d1520;
+        border-right: 1px solid #00d4ff15;
     }
     .main-header {
         background: linear-gradient(135deg, #0d1b2a 0%, #1a2744 50%, #0d1b2a 100%);
         border: 1px solid #00d4ff33;
         border-radius: 12px;
-        padding: 20px 28px;
-        margin-bottom: 20px;
+        padding: 18px 26px;
+        margin-bottom: 18px;
         box-shadow: 0 0 30px #00d4ff15;
     }
-    .main-header h1 {
-        color: #00d4ff;
-        font-size: 2rem;
-        font-weight: 800;
-        letter-spacing: 2px;
-        margin: 0;
-    }
-    .main-header p {
-        color: #7a8fa6;
-        font-size: 0.85rem;
-        margin: 4px 0 0 0;
-        letter-spacing: 1px;
-    }
-    .signal-card-buy {
-        background: linear-gradient(135deg, #003d1f, #005a2b);
-        border: 1px solid #00ff8844;
-        border-left: 4px solid #00ff88;
-        border-radius: 8px;
-        padding: 14px 16px;
-        margin: 6px 0;
-    }
-    .signal-card-sell {
-        background: linear-gradient(135deg, #3d0000, #5a0000);
-        border: 1px solid #ff444444;
-        border-left: 4px solid #ff4444;
-        border-radius: 8px;
-        padding: 14px 16px;
-        margin: 6px 0;
-    }
-    .signal-card-hold {
-        background: linear-gradient(135deg, #1a1f2e, #222840);
-        border: 1px solid #ffffff15;
-        border-left: 4px solid #888;
-        border-radius: 8px;
-        padding: 14px 16px;
-        margin: 6px 0;
-    }
-    .metric-box {
-        background: #0d1b2a;
-        border: 1px solid #00d4ff22;
-        border-radius: 10px;
-        padding: 16px;
-        text-align: center;
-    }
-    .metric-box .value {
-        font-size: 1.6rem;
-        font-weight: 700;
-        color: #00d4ff;
-    }
-    .metric-box .label {
-        font-size: 0.75rem;
-        color: #7a8fa6;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-    .score-bar-container {
-        background: #1a2744;
-        border-radius: 4px;
-        height: 6px;
-        margin-top: 6px;
-    }
-    .ai-explanation {
-        background: #0d1520;
-        border: 1px solid #00d4ff22;
-        border-radius: 8px;
-        padding: 12px 16px;
-        font-size: 0.85rem;
-        color: #a0b4c8;
-        font-style: italic;
-    }
-    .news-card {
-        background: #0d1b2a;
-        border: 1px solid #ffffff10;
-        border-radius: 8px;
-        padding: 12px;
-        margin: 6px 0;
-    }
-    .sentiment-positive { color: #00ff88; font-weight: 600; }
-    .sentiment-negative { color: #ff4444; font-weight: 600; }
-    .sentiment-neutral  { color: #ffaa00; font-weight: 600; }
-    div[data-testid="stSidebarContent"] {
-        background-color: #0d1520;
-        border-right: 1px solid #00d4ff15;
-    }
-    .stTabs [data-baseweb="tab-list"] {
-        background-color: #0d1520;
-        border-bottom: 1px solid #00d4ff22;
-    }
-    .stTabs [data-baseweb="tab"] {
-        color: #7a8fa6;
-        font-weight: 600;
-    }
-    .stTabs [aria-selected="true"] {
-        color: #00d4ff !important;
-        border-bottom: 2px solid #00d4ff !important;
-    }
-    .backtest-result {
-        background: #0d1b2a;
-        border: 1px solid #00d4ff22;
-        border-radius: 10px;
-        padding: 16px;
-        margin: 8px 0;
-    }
+    .main-header h1 { color: #00d4ff; font-size: 1.9rem; font-weight: 800; letter-spacing: 2px; margin: 0; }
+    .main-header p  { color: #7a8fa6; font-size: 0.8rem; margin: 3px 0 0 0; letter-spacing: 1px; }
+    .card-buy  { background:linear-gradient(135deg,#003d1f,#005a2b); border:1px solid #00ff8844; border-left:4px solid #00ff88; border-radius:8px; padding:12px 14px; margin:5px 0; }
+    .card-sell { background:linear-gradient(135deg,#3d0000,#5a0000); border:1px solid #ff444444; border-left:4px solid #ff4444; border-radius:8px; padding:12px 14px; margin:5px 0; }
+    .card-hold { background:linear-gradient(135deg,#1a1f2e,#222840); border:1px solid #ffffff15; border-left:4px solid #555; border-radius:8px; padding:12px 14px; margin:5px 0; }
+    .card-info { background:#0d1b2a; border:1px solid #00d4ff22; border-radius:10px; padding:14px; margin:6px 0; }
+    .card-alert{ background:linear-gradient(135deg,#1a1400,#2a2000); border:1px solid #ffaa0044; border-left:4px solid #ffaa00; border-radius:8px; padding:12px 14px; margin:5px 0; }
+    .ai-box    { background:#0d1520; border:1px solid #00d4ff22; border-radius:8px; padding:12px 16px; font-size:0.85rem; color:#a0b4c8; font-style:italic; }
+    .sr-buy    { color:#00ff88; font-weight:700; }
+    .sr-sell   { color:#ff4444; font-weight:700; }
+    .sr-neutral{ color:#ffaa00; font-weight:600; }
+    .news-card { background:#0d1b2a; border:1px solid #ffffff10; border-radius:8px; padding:10px 12px; margin:5px 0; }
+    .stTabs [data-baseweb="tab-list"] { background-color:#0d1520; border-bottom:1px solid #00d4ff22; }
+    .stTabs [data-baseweb="tab"]      { color:#7a8fa6; font-weight:600; }
+    .stTabs [aria-selected="true"]    { color:#00d4ff !important; border-bottom:2px solid #00d4ff !important; }
+    .options-call { background:#003d1f; border-radius:4px; padding:4px 8px; color:#00ff88; font-weight:700; }
+    .options-put  { background:#3d0000; border-radius:4px; padding:4px 8px; color:#ff4444; font-weight:700; }
+    .risk-box { background:#0d1b2a; border:1px solid #ffaa0033; border-radius:10px; padding:16px; }
 </style>
 """, unsafe_allow_html=True)
 
-# ================= SECURITY LOGIN =================
+# ================= AUTH =================
 MY_PASSWORD = "QuantEdge2026"
-
 def check_password():
-    if "password_correct" not in st.session_state:
-        st.session_state["password_correct"] = False
-    if not st.session_state["password_correct"]:
-        st.markdown("""
-        <div class="main-header">
-            <h1>⚡ QUANTEDGE AI v2.0</h1>
-            <p>SECURE TRADING TERMINAL — AUTHORIZED ACCESS ONLY</p>
-        </div>
-        """, unsafe_allow_html=True)
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            st.markdown("### 🔒 Security Gateway")
-            pwd = st.text_input("Password:", type="password", key="password_input")
+    if "auth" not in st.session_state:
+        st.session_state.auth = False
+    if not st.session_state.auth:
+        st.markdown('<div class="main-header"><h1>⚡ QUANTEDGE AI v3.0</h1><p>SECURE TRADING TERMINAL</p></div>', unsafe_allow_html=True)
+        _, c, _ = st.columns([1, 2, 1])
+        with c:
+            pwd = st.text_input("🔒 Password:", type="password")
             if pwd == MY_PASSWORD:
-                st.session_state["password_correct"] = True
+                st.session_state.auth = True
                 st.rerun()
             elif pwd:
                 st.error("❌ Galat Password!")
@@ -172,916 +82,1129 @@ def check_password():
 if not check_password():
     st.stop()
 
-# ================= CONFIG =================
+# ================= CONSTANTS =================
 ist = pytz.timezone('Asia/Kolkata')
 now = datetime.now(ist)
-
-TOKEN = "8629163881:AAHrO4n9KpDNT0tMR1DoRvXeJeZ5VEIWCCA"
+TOKEN   = "8629163881:AAHrO4n9KpDNT0tMR1DoRvXeJeZ5VEIWCCA"
 CHAT_ID = "7602586865"
-NEWS_API_KEY = ""  # Optional: add your NewsAPI key here
+
+# ================= MARKET UNIVERSES =================
+NSE_STOCKS = [
+    "TATAMOTORS.NS","M&M.NS","DLF.NS","BRITANNIA.NS","BHARTIARTL.NS","SBIN.NS",
+    "KOTAKBANK.NS","ZOMATO.NS","TITAN.NS","HAL.NS","LTIM.NS","TORNTPHARM.NS",
+    "SUZLON.NS","ABB.NS","GODREJPROP.NS","TATAELXSI.NS","PERSISTENT.NS",
+    "HCLTECH.NS","INFY.NS","MARUTI.NS","HINDALCO.NS","ASIANPAINT.NS",
+    "BAJAJ-AUTO.NS","TRENT.NS","EICHERMOT.NS","TVSMOTOR.NS","NTPC.NS",
+    "MOTHERSON.NS","ZYDUSLIFE.NS","AXISBANK.NS","HINDUNILVR.NS",
+    "PIDILITIND.NS","SRF.NS","VBL.NS","NETWEB.NS","RELIANCE.NS","TCS.NS"
+]
+
+CRYPTO = [
+    "BTC-USD","ETH-USD","BNB-USD","SOL-USD","XRP-USD",
+    "ADA-USD","AVAX-USD","DOGE-USD","MATIC-USD","DOT-USD"
+]
+
+US_STOCKS = [
+    "AAPL","MSFT","GOOGL","AMZN","NVDA","TSLA","META",
+    "AMD","NFLX","JPM","BAC","V","WMT","DIS","PLTR"
+]
+
+NIFTY_INDEX  = "^NSEI"
+SP500_INDEX  = "^GSPC"
+BTC_BENCH    = "BTC-USD"
+
+SECTOR_MAP = {
+    "IT":      ["INFY.NS","TCS.NS","HCLTECH.NS","TATAELXSI.NS","PERSISTENT.NS","LTIM.NS"],
+    "Banking": ["SBIN.NS","KOTAKBANK.NS","AXISBANK.NS"],
+    "Auto":    ["TATAMOTORS.NS","MARUTI.NS","M&M.NS","BAJAJ-AUTO.NS","EICHERMOT.NS","TVSMOTOR.NS"],
+    "Pharma":  ["TORNTPHARM.NS","ZYDUSLIFE.NS"],
+    "Infra":   ["DLF.NS","GODREJPROP.NS","NTPC.NS","HAL.NS","ABB.NS"],
+    "FMCG":    ["BRITANNIA.NS","HINDUNILVR.NS","VBL.NS"],
+    "Others":  ["ZOMATO.NS","TITAN.NS","SUZLON.NS","HINDALCO.NS","TRENT.NS","SRF.NS","NETWEB.NS","RELIANCE.NS"],
+}
 
 # ================= SESSION STATE =================
-defaults = {
-    "balance": 100000.0,
-    "positions": {},
-    "entry_price": {},
-    "highest_price": {},
-    "trade_log": [],
-    "backtest_results": {}
+DEFAULTS = {
+    "balance": 100000.0, "positions": {}, "entry_price": {},
+    "highest_price": {}, "trade_log": [], "price_alerts": [],
+    "triggered_alerts": []
 }
-for k, v in defaults.items():
+for k, v in DEFAULTS.items():
     if k not in st.session_state:
-        st.session_state[k] = v
-
-# ================= STOCKS =================
-stocks = [
-    "TATAMOTORS.NS", "M&M.NS", "DLF.NS", "BRITANNIA.NS", "BHARTIARTL.NS", "SBIN.NS",
-    "KOTAKBANK.NS", "ZOMATO.NS", "TITAN.NS", "MAXHEALTH.NS", "HAL.NS", "LTIM.NS",
-    "TORNTPHARM.NS", "SUZLON.NS", "ABB.NS", "GODREJPROP.NS", "HAPPSTMNDS.NS",
-    "TATAELXSI.NS", "PERSISTENT.NS", "HCLTECH.NS", "INFY.NS", "MARUTI.NS",
-    "HINDALCO.NS", "ASIANPAINT.NS", "BAJAJ-AUTO.NS", "TRENT.NS", "EICHERMOT.NS",
-    "TVSMOTOR.NS", "NTPC.NS", "MOTHERSON.NS", "ZYDUSLIFE.NS", "AXISBANK.NS",
-    "HINDUNILVR.NS", "PIDILITIND.NS", "SRF.NS", "VBL.NS", "NETWEB.NS"
-]
+        st.session_state[k] = v if not isinstance(v, list) else list(v)
 
 # ================= SIDEBAR =================
 with st.sidebar:
-    st.markdown("## ⚡ QuantEdge AI v2.0")
+    st.markdown("## ⚡ QuantEdge AI v3.0")
     st.divider()
+
+    market_tab = st.radio("🌐 Market", ["🇮🇳 NSE India", "🪙 Crypto", "🇺🇸 US Stocks"], index=0)
     mode = st.radio("📊 Trading Mode", ["Swing", "Intraday"], index=0)
     st.divider()
+
     st.markdown("### ⚙️ Risk Settings")
     if mode == "Intraday":
         STOP_LOSS_PCT = st.slider("Stop Loss %", 0.5, 3.0, 1.0, 0.1) / 100
-        TARGET_PCT = st.slider("Target %", 1.0, 5.0, 2.5, 0.1) / 100
+        TARGET_PCT    = st.slider("Target %",    1.0, 5.0, 2.5, 0.1) / 100
     else:
-        STOP_LOSS_PCT = st.slider("Stop Loss %", 1.0, 8.0, 3.0, 0.5) / 100
-        TARGET_PCT = st.slider("Target %", 3.0, 20.0, 8.0, 0.5) / 100
-    st.divider()
-    st.markdown("### 🔔 Alerts")
-    telegram_alerts = st.toggle("Telegram Alerts", value=True)
-    min_score = st.slider("Min Score for Alert", 50, 95, 75)
-    st.divider()
-    st.caption(f"🕒 IST: {now.strftime('%d %b %Y, %H:%M:%S')}")
-    st.caption(f"Mode: **{mode}** | SL: {STOP_LOSS_PCT*100:.1f}% | TG: {TARGET_PCT*100:.1f}%")
+        STOP_LOSS_PCT = st.slider("Stop Loss %", 1.0, 8.0,  3.0, 0.5) / 100
+        TARGET_PCT    = st.slider("Target %",    3.0, 20.0, 8.0, 0.5) / 100
 
-# ================= HEADER =================
-st.markdown("""
-<div class="main-header">
-    <h1>⚡ QUANTEDGE AI v2.0</h1>
-    <p>ADVANCED ALGORITHMIC TRADING TERMINAL — NSE INDIA</p>
-</div>
-""", unsafe_allow_html=True)
+    st.divider()
+    telegram_on = st.toggle("📲 Telegram Alerts", value=True)
+    min_score   = st.slider("Min Signal Score", 50, 95, 75)
+    st.divider()
+    st.caption(f"🕒 {now.strftime('%d %b %Y  %H:%M:%S')} IST")
+
+# Active universe
+if "NSE" in market_tab:
+    ACTIVE_STOCKS = NSE_STOCKS
+    CURRENCY = "₹"
+    BENCH = NIFTY_INDEX
+elif "Crypto" in market_tab:
+    ACTIVE_STOCKS = CRYPTO
+    CURRENCY = "$"
+    BENCH = BTC_BENCH
+else:
+    ACTIVE_STOCKS = US_STOCKS
+    CURRENCY = "$"
+    BENCH = SP500_INDEX
+
+can_trade = not (mode == "Intraday" and (now.hour > 14 or (now.hour == 14 and now.minute >= 30)))
 
 # ================= HELPERS =================
 def send_telegram(msg):
-    if not telegram_alerts:
+    if not telegram_on:
         return
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     try:
-        requests.post(url, data={"chat_id": CHAT_ID, "text": msg}, timeout=10)
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+                      data={"chat_id": CHAT_ID, "text": msg}, timeout=8)
     except:
         pass
 
-# ================= ML MODEL (Upgraded) =================
-@st.cache_resource
-def get_model(symbol):
-    """Train per-symbol GradientBoosting model with proper features"""
-    try:
-        ticker = yf.Ticker(symbol)
-        df = ticker.history(period="2y")
-        if df is None or len(df) < 200:
-            return None, None
-
-        df = df.copy()
-        # Features
-        df['Return_1d'] = df['Close'].pct_change(1)
-        df['Return_5d'] = df['Close'].pct_change(5)
-        df['Return_10d'] = df['Close'].pct_change(10)
-        df['SMA_20'] = df['Close'].rolling(20).mean()
-        df['SMA_50'] = df['Close'].rolling(50).mean()
-        df['SMA_200'] = df['Close'].rolling(200).mean()
-        df['Vol_ratio'] = df['Volume'] / df['Volume'].rolling(20).mean()
-
-        delta = df['Close'].diff()
-        gain = delta.clip(lower=0).rolling(14).mean()
-        loss = (-delta.clip(upper=0)).rolling(14).mean()
-        df['RSI'] = 100 - (100 / (1 + gain / loss))
-
-        exp1 = df['Close'].ewm(span=12).mean()
-        exp2 = df['Close'].ewm(span=26).mean()
-        df['MACD'] = (exp1 - exp2) / df['Close']
-
-        df['BB_pos'] = (df['Close'] - df['Close'].rolling(20).mean()) / (df['Close'].rolling(20).std() * 2)
-        df['ATR'] = (df['High'] - df['Low']).rolling(14).mean() / df['Close']
-
-        # Label: did price go up >2% in next 5 days?
-        df['Future_Return'] = df['Close'].shift(-5) / df['Close'] - 1
-        df['Label'] = (df['Future_Return'] > 0.02).astype(int)
-
-        feature_cols = ['Return_1d', 'Return_5d', 'Return_10d', 'RSI', 'MACD',
-                        'BB_pos', 'Vol_ratio', 'ATR',
-                        'SMA_20', 'SMA_50', 'SMA_200']
-
-        df = df.dropna()
-        if len(df) < 100:
-            return None, None
-
-        X = df[feature_cols]
-        y = df['Label']
-
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
-        scaler = StandardScaler()
-        X_train_s = scaler.fit_transform(X_train)
-
-        model = GradientBoostingClassifier(n_estimators=150, learning_rate=0.05,
-                                           max_depth=4, random_state=42)
-        model.fit(X_train_s, y_train)
-        return model, scaler
-    except:
-        return None, None
-
-# ================= DATA FETCH =================
+# ================= DATA =================
 @st.cache_data(ttl=90, show_spinner=False)
 def get_data(symbol, current_mode):
     try:
-        stock = yf.Ticker(symbol)
-        if current_mode == "Intraday":
-            df = stock.history(period="5d", interval="5m")
-        else:
-            df = stock.history(period="1y")
+        t = yf.Ticker(symbol)
+        df = t.history(period="5d", interval="5m") if current_mode == "Intraday" else t.history(period="1y")
         return df.dropna() if not df.empty else None
     except:
         return None
 
 @st.cache_data(ttl=300, show_spinner=False)
-def get_market_regime(current_mode):
+def get_market_regime(bench, current_mode):
     try:
-        nifty = yf.Ticker("^NSEI")
-        df = nifty.history(period="6mo") if current_mode == "Swing" else nifty.history(period="5d", interval="5m")
+        df = yf.Ticker(bench).history(period="6mo" if current_mode == "Swing" else "5d",
+                                       interval="1d"  if current_mode == "Swing" else "5m")
         if df.empty:
             return True, "Unknown", 50
-        df['SMA_50'] = df['Close'].rolling(50).mean()
-        df['SMA_20'] = df['Close'].rolling(20).mean()
-        latest = df['Close'].iloc[-1]
-        sma50 = df['SMA_50'].iloc[-1]
-        sma20 = df['SMA_20'].iloc[-1]
-        strength = min(100, int(abs(latest - sma50) / sma50 * 1000))
-        is_bullish = latest > sma50
-        trend = "Bullish" if is_bullish else "Bearish"
-        return is_bullish, f"{trend} (SMA50: ₹{sma50:.0f})", strength
+        df['SMA50'] = df['Close'].rolling(50).mean()
+        last = df['Close'].iloc[-1]
+        sma  = df['SMA50'].iloc[-1]
+        bull = last > sma
+        pct  = (last - sma) / sma * 100
+        return bull, f"{'Bullish' if bull else 'Bearish'} ({pct:+.1f}% vs SMA50)", abs(pct)
     except:
-        return True, "Unknown", 50
+        return True, "Unknown", 0
 
-# ================= INDICATORS ENGINE =================
+# ================= INDICATORS =================
 def compute_indicators(df, current_mode):
     df = df.copy()
-    df['SMA_20'] = df['Close'].rolling(20).mean()
-    df['SMA_50'] = df['Close'].rolling(50).mean()
-    df['SMA_200'] = df['Close'].rolling(200).mean()
-    df['EMA_9'] = df['Close'].ewm(span=9).mean()
-    df['Volume_SMA_20'] = df['Volume'].rolling(20).mean()
+    c = df['Close']
+    df['SMA_20']  = c.rolling(20).mean()
+    df['SMA_50']  = c.rolling(50).mean()
+    df['SMA_200'] = c.rolling(200).mean()
+    df['EMA_9']   = c.ewm(span=9).mean()
+    df['Vol_SMA'] = df['Volume'].rolling(20).mean()
 
-    delta = df['Close'].diff()
-    gain = delta.clip(lower=0).rolling(14).mean()
-    loss = (-delta.clip(upper=0)).rolling(14).mean()
-    df['RSI'] = 100 - (100 / (1 + gain / loss))
+    delta = c.diff()
+    gain  = delta.clip(lower=0).rolling(14).mean()
+    loss  = (-delta.clip(upper=0)).rolling(14).mean()
+    df['RSI'] = 100 - (100 / (1 + gain / (loss + 1e-9)))
 
-    exp1 = df['Close'].ewm(span=12, adjust=False).mean()
-    exp2 = df['Close'].ewm(span=26, adjust=False).mean()
-    df['MACD'] = exp1 - exp2
-    df['Signal_Line'] = df['MACD'].ewm(span=9, adjust=False).mean()
-    df['MACD_Hist'] = df['MACD'] - df['Signal_Line']
+    e1 = c.ewm(span=12, adjust=False).mean()
+    e2 = c.ewm(span=26, adjust=False).mean()
+    df['MACD']   = e1 - e2
+    df['MacdSig'] = df['MACD'].ewm(span=9, adjust=False).mean()
+    df['MacdH']   = df['MACD'] - df['MacdSig']
 
-    df['BB_Mid'] = df['Close'].rolling(20).mean()
-    df['BB_Std'] = df['Close'].rolling(20).std()
-    df['BB_Up'] = df['BB_Mid'] + (df['BB_Std'] * 2)
-    df['BB_Low'] = df['BB_Mid'] - (df['BB_Std'] * 2)
-    df['BB_pct'] = (df['Close'] - df['BB_Low']) / (df['BB_Up'] - df['BB_Low'])
+    df['BB_Mid'] = c.rolling(20).mean()
+    df['BB_Std'] = c.rolling(20).std()
+    df['BB_Up']  = df['BB_Mid'] + df['BB_Std'] * 2
+    df['BB_Low'] = df['BB_Mid'] - df['BB_Std'] * 2
+    df['BB_pct'] = (c - df['BB_Low']) / (df['BB_Up'] - df['BB_Low'] + 1e-9)
 
-    df['ATR'] = (df['High'] - df['Low']).rolling(14).mean()
+    df['ATR']    = (df['High'] - df['Low']).rolling(14).mean()
+    df['Stoch_K']= ((c - df['Low'].rolling(14).min()) /
+                    (df['High'].rolling(14).max() - df['Low'].rolling(14).min() + 1e-9)) * 100
+    df['Stoch_D']= df['Stoch_K'].rolling(3).mean()
 
     if current_mode == "Intraday":
-        df['Typical_Price'] = (df['High'] + df['Low'] + df['Close']) / 3
-        df['VP'] = df['Typical_Price'] * df['Volume']
-        df['Date'] = df.index.date
-        df['Cum_Vol'] = df.groupby('Date')['Volume'].cumsum()
-        df['Cum_VP'] = df.groupby('Date')['VP'].cumsum()
-        df['VWAP'] = df['Cum_VP'] / df['Cum_Vol']
-
+        df['TP']  = (df['High'] + df['Low'] + c) / 3
+        df['VP']  = df['TP'] * df['Volume']
+        df['Date']= df.index.date
+        df['CumV'] = df.groupby('Date')['Volume'].cumsum()
+        df['CumVP']= df.groupby('Date')['VP'].cumsum()
+        df['VWAP'] = df['CumVP'] / (df['CumV'] + 1e-9)
     return df.dropna()
 
-# ================= ADVANCED ENGINE =================
+# ================= SUPPORT & RESISTANCE =================
+def get_sr_levels(df, n_levels=5):
+    """Pivot-based S&R + recent swing highs/lows"""
+    try:
+        df = df.tail(120).copy()
+        highs = df['High'].values
+        lows  = df['Low'].values
+        closes= df['Close'].values
+
+        # Classic Pivot
+        pivot = (highs[-1] + lows[-1] + closes[-1]) / 3
+        r1 = 2 * pivot - lows[-1]
+        s1 = 2 * pivot - highs[-1]
+        r2 = pivot + (highs[-1] - lows[-1])
+        s2 = pivot - (highs[-1] - lows[-1])
+        r3 = highs[-1] + 2 * (pivot - lows[-1])
+        s3 = lows[-1]  - 2 * (highs[-1] - pivot)
+
+        # Swing highs/lows (local extrema)
+        swing_h, swing_l = [], []
+        for i in range(5, len(df) - 5):
+            if highs[i] == max(highs[i-5:i+6]):
+                swing_h.append(highs[i])
+            if lows[i] == min(lows[i-5:i+6]):
+                swing_l.append(lows[i])
+
+        current = float(closes[-1])
+
+        resistances = sorted(set([r1, r2, r3] + swing_h[-4:]), reverse=False)
+        supports    = sorted(set([s1, s2, s3] + swing_l[-4:]), reverse=True)
+
+        res_above = [r for r in resistances if r > current][:3]
+        sup_below = [s for s in supports    if s < current][:3]
+
+        return {
+            "pivot": round(pivot, 2),
+            "resistances": [round(r, 2) for r in res_above],
+            "supports":    [round(s, 2) for s in sup_below],
+            "current":     round(current, 2),
+        }
+    except:
+        return None
+
+# ================= ML MODEL =================
+@st.cache_resource
+def get_model(symbol):
+    try:
+        df = yf.Ticker(symbol).history(period="2y")
+        if df is None or len(df) < 200:
+            return None, None
+        df = df.copy()
+        c = df['Close']
+        df['r1']  = c.pct_change(1)
+        df['r5']  = c.pct_change(5)
+        df['r10'] = c.pct_change(10)
+        df['sma20']= c.rolling(20).mean()
+        df['sma50']= c.rolling(50).mean()
+        delta = c.diff()
+        gain = delta.clip(lower=0).rolling(14).mean()
+        loss = (-delta.clip(upper=0)).rolling(14).mean()
+        df['rsi'] = 100 - (100 / (1 + gain / (loss + 1e-9)))
+        e1 = c.ewm(span=12).mean(); e2 = c.ewm(span=26).mean()
+        df['macd']   = (e1 - e2) / (c + 1e-9)
+        df['bb_pos'] = (c - c.rolling(20).mean()) / (c.rolling(20).std() * 2 + 1e-9)
+        df['atr']    = (df['High'] - df['Low']).rolling(14).mean() / (c + 1e-9)
+        df['vol_r']  = df['Volume'] / (df['Volume'].rolling(20).mean() + 1e-9)
+        df['fut']    = c.shift(-5) / c - 1
+        df['label']  = (df['fut'] > 0.02).astype(int)
+        feats = ['r1','r5','r10','rsi','macd','bb_pos','atr','vol_r','sma20','sma50']
+        df = df.dropna()
+        if len(df) < 100:
+            return None, None
+        X = df[feats]; y = df['label']
+        Xtr, _, ytr, _ = train_test_split(X, y, test_size=0.2, shuffle=False)
+        sc = StandardScaler()
+        Xtr_s = sc.fit_transform(Xtr)
+        mdl = GradientBoostingClassifier(n_estimators=150, learning_rate=0.05,
+                                         max_depth=4, random_state=42)
+        mdl.fit(Xtr_s, ytr)
+        return mdl, sc
+    except:
+        return None, None
+
+# ================= SIGNAL ENGINE =================
 def advanced_engine(symbol, df, current_mode):
     if df is None or len(df) < 100:
         return "HOLD", 0, 0, "Insufficient Data", []
-
     try:
         df = compute_indicators(df, current_mode)
         if len(df) < 50:
             return "HOLD", 0, 0, "Data Error", []
 
-        price   = float(df["Close"].iloc[-1])
-        rsi     = float(df["RSI"].iloc[-1])
-        sma20   = float(df["SMA_20"].iloc[-1])
-        sma50   = float(df["SMA_50"].iloc[-1])
-        macd    = float(df["MACD"].iloc[-1])
-        sig_ln  = float(df["Signal_Line"].iloc[-1])
-        macd_h  = float(df["MACD_Hist"].iloc[-1])
-        bb_pct  = float(df["BB_pct"].iloc[-1])
-        bb_up   = float(df["BB_Up"].iloc[-1])
-        bb_low  = float(df["BB_Low"].iloc[-1])
-        cur_vol = float(df["Volume"].iloc[-1])
-        avg_vol = float(df["Volume_SMA_20"].iloc[-1])
-        atr     = float(df["ATR"].iloc[-1])
-        vwap    = float(df["VWAP"].iloc[-1]) if current_mode == "Intraday" else None
+        price  = float(df['Close'].iloc[-1])
+        rsi    = float(df['RSI'].iloc[-1])
+        sma20  = float(df['SMA_20'].iloc[-1])
+        sma50  = float(df['SMA_50'].iloc[-1])
+        macd   = float(df['MACD'].iloc[-1])
+        macd_s = float(df['MacdSig'].iloc[-1])
+        macd_h = float(df['MacdH'].iloc[-1])
+        bb_pct = float(df['BB_pct'].iloc[-1])
+        cur_v  = float(df['Volume'].iloc[-1])
+        avg_v  = float(df['Vol_SMA'].iloc[-1])
+        stoch_k= float(df['Stoch_K'].iloc[-1])
+        stoch_d= float(df['Stoch_D'].iloc[-1])
+        atr    = float(df['ATR'].iloc[-1])
+        vwap   = float(df['VWAP'].iloc[-1]) if (current_mode == "Intraday" and 'VWAP' in df.columns) else None
 
-        # ML Prediction
-        model, scaler = get_model(symbol)
-        ml_score = 0
-        ml_confidence = 0
-        if model and scaler:
+        mdl, sc = get_model(symbol)
+        ml_conf = 0
+        if mdl and sc:
             try:
-                ret1 = df['Close'].pct_change(1).iloc[-1]
-                ret5 = df['Close'].pct_change(5).iloc[-1] if len(df) >= 5 else 0
-                ret10 = df['Close'].pct_change(10).iloc[-1] if len(df) >= 10 else 0
-                sma200 = float(df['SMA_200'].iloc[-1]) if 'SMA_200' in df.columns else price
-                feat = np.array([[ret1, ret5, ret10, rsi, macd/price,
-                                  bb_pct - 0.5, cur_vol/(avg_vol+1e-9) - 1,
-                                  atr/price, sma20, sma50, sma200]])
-                feat_s = scaler.transform(feat)
-                prob = model.predict_proba(feat_s)[0][1]
-                ml_confidence = int(prob * 100)
-                if prob > 0.6:
-                    ml_score = int((prob - 0.5) * 60)
+                r1  = df['Close'].pct_change(1).iloc[-1]
+                r5  = df['Close'].pct_change(5).iloc[-1]  if len(df) >= 5  else 0
+                r10 = df['Close'].pct_change(10).iloc[-1] if len(df) >= 10 else 0
+                feat = np.array([[r1, r5, r10, rsi, macd/(price+1e-9),
+                                  bb_pct - 0.5, atr/(price+1e-9), cur_v/(avg_v+1e-9),
+                                  sma20, sma50]])
+                prob = mdl.predict_proba(sc.transform(feat))[0][1]
+                ml_conf = int(prob * 100)
             except:
                 pass
 
-        score = ml_score
-        reasons = []
+        score = (ml_conf - 50) * 0.6 if ml_conf > 0 else 0
         signals = []
 
         # RSI
-        if rsi < 35:
-            score += 18; reasons.append("🔵 RSI Strongly Oversold"); signals.append(("RSI", rsi, "BULLISH", f"{rsi:.1f} < 35"))
+        if rsi < 30:
+            score += 20; signals.append(("RSI", "BULLISH", f"{rsi:.1f} — Deeply Oversold"))
         elif rsi < 45:
-            score += 10; reasons.append("🔵 RSI Oversold"); signals.append(("RSI", rsi, "BULLISH", f"{rsi:.1f} < 45"))
-        elif rsi > 72:
-            score -= 15; reasons.append("🔴 RSI Overbought"); signals.append(("RSI", rsi, "BEARISH", f"{rsi:.1f} > 72"))
+            score += 10; signals.append(("RSI", "BULLISH", f"{rsi:.1f} — Oversold"))
+        elif rsi > 75:
+            score -= 18; signals.append(("RSI", "BEARISH", f"{rsi:.1f} — Overbought"))
         else:
-            signals.append(("RSI", rsi, "NEUTRAL", f"{rsi:.1f}"))
+            signals.append(("RSI", "NEUTRAL", f"{rsi:.1f}"))
 
         # Trend
         if price > sma20 > sma50:
-            score += 15; reasons.append("📈 Strong Uptrend"); signals.append(("Trend", price, "BULLISH", "Price > SMA20 > SMA50"))
+            score += 15; signals.append(("Trend", "BULLISH", "Price > SMA20 > SMA50"))
         elif price > sma50:
-            score += 8; reasons.append("📈 Above SMA50"); signals.append(("Trend", price, "BULLISH", "Price > SMA50"))
+            score += 8;  signals.append(("Trend", "BULLISH", "Price above SMA50"))
         elif price < sma50:
-            score -= 8; signals.append(("Trend", price, "BEARISH", "Price < SMA50"))
+            score -= 10; signals.append(("Trend", "BEARISH", "Price below SMA50"))
 
         # MACD
-        if macd > sig_ln and macd_h > 0:
-            score += 14; reasons.append("⚡ MACD Bullish Cross"); signals.append(("MACD", macd, "BULLISH", "MACD > Signal"))
-        elif macd < sig_ln and macd_h < 0:
-            score -= 10; signals.append(("MACD", macd, "BEARISH", "MACD < Signal"))
+        if macd > macd_s and macd_h > 0:
+            score += 14; signals.append(("MACD", "BULLISH", "Bullish crossover"))
+        elif macd < macd_s:
+            score -= 10; signals.append(("MACD", "BEARISH", "Bearish crossover"))
         else:
-            signals.append(("MACD", macd, "NEUTRAL", "Converging"))
+            signals.append(("MACD", "NEUTRAL", "Converging"))
 
         # Bollinger
-        if bb_pct < 0.2:
-            score += 12; reasons.append("📉 Near BB Low (Bounce)"); signals.append(("BB", bb_pct, "BULLISH", "Near lower band"))
-        elif bb_pct > 0.85:
-            score -= 8; signals.append(("BB", bb_pct, "BEARISH", "Near upper band"))
+        if bb_pct < 0.15:
+            score += 12; signals.append(("Bollinger", "BULLISH", "Near lower band — bounce zone"))
+        elif bb_pct > 0.90:
+            score -= 8;  signals.append(("Bollinger", "BEARISH", "Near upper band — caution"))
         else:
-            signals.append(("BB", bb_pct, "NEUTRAL", f"{bb_pct:.2f}"))
+            signals.append(("Bollinger", "NEUTRAL", f"{bb_pct:.2f}"))
+
+        # Stochastic
+        if stoch_k < 25 and stoch_k > stoch_d:
+            score += 10; signals.append(("Stochastic", "BULLISH", f"K:{stoch_k:.0f} oversold + rising"))
+        elif stoch_k > 80 and stoch_k < stoch_d:
+            score -= 8;  signals.append(("Stochastic", "BEARISH", f"K:{stoch_k:.0f} overbought"))
+        else:
+            signals.append(("Stochastic", "NEUTRAL", f"K:{stoch_k:.0f} D:{stoch_d:.0f}"))
 
         # Volume
-        vol_ratio = cur_vol / (avg_vol + 1e-9)
-        if vol_ratio > 2.0:
-            score += 14; reasons.append("🔊 High Volume Surge"); signals.append(("Volume", vol_ratio, "BULLISH", f"{vol_ratio:.1f}x avg"))
-        elif vol_ratio > 1.4:
-            score += 7; signals.append(("Volume", vol_ratio, "BULLISH", f"{vol_ratio:.1f}x avg"))
+        vr = cur_v / (avg_v + 1e-9)
+        if vr > 2.0:
+            score += 14; signals.append(("Volume", "BULLISH", f"{vr:.1f}x surge"))
+        elif vr > 1.4:
+            score += 7;  signals.append(("Volume", "BULLISH", f"{vr:.1f}x above avg"))
         else:
-            signals.append(("Volume", vol_ratio, "NEUTRAL", f"{vol_ratio:.1f}x avg"))
+            signals.append(("Volume", "NEUTRAL", f"{vr:.1f}x avg"))
 
-        # VWAP (Intraday)
-        if current_mode == "Intraday" and vwap:
+        # VWAP (intraday)
+        if vwap:
             if price > vwap * 1.005:
-                score += 30; reasons.append("✅ Above VWAP"); signals.append(("VWAP", vwap, "BULLISH", f"Price ₹{price:.1f} > VWAP ₹{vwap:.1f}"))
+                score += 30; signals.append(("VWAP", "BULLISH", f"Above VWAP {vwap:.1f}"))
             elif price < vwap * 0.995:
-                score -= 30; reasons.append("❌ Below VWAP"); signals.append(("VWAP", vwap, "BEARISH", f"Price ₹{price:.1f} < VWAP ₹{vwap:.1f}"))
+                score -= 30; signals.append(("VWAP", "BEARISH", f"Below VWAP {vwap:.1f}"))
             else:
-                signals.append(("VWAP", vwap, "NEUTRAL", "Near VWAP"))
+                signals.append(("VWAP", "NEUTRAL", f"Near VWAP {vwap:.1f}"))
 
-        # ML signal
-        if ml_confidence > 0:
-            signals.append(("ML Model", ml_confidence, "BULLISH" if ml_confidence > 60 else "NEUTRAL", f"{ml_confidence}% confidence"))
+        if ml_conf > 0:
+            signals.append(("ML Model", "BULLISH" if ml_conf > 60 else "NEUTRAL",
+                            f"{ml_conf}% confidence"))
+
+        reasons = [s[2] for s in signals if s[1] == "BULLISH"][:3]
+        status  = " | ".join(reasons) if reasons else "Watching"
 
         if score >= 75:
-            return "BUY", price, score, " | ".join(reasons[:3]), signals
-        elif score <= -20 or (rsi > 72 and macd < sig_ln):
-            return "SELL", price, score, " | ".join(reasons[:3]), signals
+            return "BUY",  price, int(score), status, signals
+        elif score <= -20 or (rsi > 72 and macd < macd_s):
+            return "SELL", price, int(score), status, signals
         else:
-            return "HOLD", price, score, " | ".join(reasons[:2]) if reasons else "Waiting", signals
-
+            return "HOLD", price, int(score), status, signals
     except Exception as e:
-        return "HOLD", 0, 0, f"Error: {str(e)[:30]}", []
+        return "HOLD", 0, 0, str(e)[:40], []
 
 # ================= AI EXPLANATION =================
-def generate_ai_explanation(symbol, signal, score, signals, price):
-    """Generate human-readable AI explanation"""
-    bullish = [s for s in signals if s[2] == "BULLISH"]
-    bearish = [s for s in signals if s[2] == "BEARISH"]
-
+def ai_explain(symbol, signal, score, signals, price, currency="₹"):
+    bull = [s for s in signals if s[1] == "BULLISH"]
+    bear = [s for s in signals if s[1] == "BEARISH"]
     if signal == "BUY":
-        parts = [f"**{symbol}** mein BUY signal hai (Score: {score}/100)."]
-        if bullish:
-            reasons = ", ".join([f"{s[0]} ({s[3]})" for s in bullish[:3]])
-            parts.append(f"🟢 Bullish factors: {reasons}.")
-        if bearish:
-            risks = ", ".join([f"{s[0]}" for s in bearish[:2]])
-            parts.append(f"⚠️ Risk: {risks} weak hai, isliye position size manage karo.")
-        parts.append(f"Current price ₹{price:.2f} hai.")
+        r = ", ".join([f"{s[0]} ({s[2]})" for s in bull[:3]])
+        risk = f" ⚠️ Watch: {', '.join([s[0] for s in bear[:2]])}" if bear else ""
+        return f"**{symbol}** BUY signal — Score {score}/100. Bullish factors: {r}.{risk} Price: {currency}{price:.2f}"
     elif signal == "SELL":
-        parts = [f"**{symbol}** mein SELL/EXIT signal hai (Score: {score}/100)."]
-        if bearish:
-            reasons = ", ".join([f"{s[0]} ({s[3]})" for s in bearish[:3]])
-            parts.append(f"🔴 Bearish factors: {reasons}.")
-        parts.append("Profit book karo ya stop loss lagao.")
+        r = ", ".join([f"{s[0]} ({s[2]})" for s in bear[:3]])
+        return f"**{symbol}** SELL/EXIT signal — Score {score}/100. Bearish: {r}. Profit book karo."
     else:
-        parts = [f"**{symbol}** abhi HOLD zone mein hai (Score: {score}/100)."]
-        parts.append("Koi strong signal nahi hai. Wait karo clearer setup ke liye.")
-
-    return " ".join(parts)
+        return f"**{symbol}** HOLD zone — Score {score}/100. Koi strong setup nahi hai abhi. Wait karo."
 
 # ================= CANDLESTICK CHART =================
-def plot_candlestick(df, symbol, current_mode):
+def plot_chart(df, symbol, current_mode):
     tail = 60 if current_mode == "Intraday" else 90
-    df_plot = df.tail(tail).copy()
+    d = df.tail(tail).copy()
 
     fig = make_subplots(
-        rows=3, cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.04,
-        row_heights=[0.6, 0.2, 0.2],
-        subplot_titles=[f"{symbol} — Price", "Volume", "RSI"]
+        rows=3, cols=1, shared_xaxes=True,
+        vertical_spacing=0.04, row_heights=[0.6, 0.2, 0.2],
+        subplot_titles=[f"{symbol}", "Volume", "RSI / Stoch"]
     )
 
-    # Candlestick
     fig.add_trace(go.Candlestick(
-        x=df_plot.index,
-        open=df_plot['Open'], high=df_plot['High'],
-        low=df_plot['Low'], close=df_plot['Close'],
-        increasing_line_color='#00ff88', decreasing_line_color='#ff4444',
-        name="Price"
+        x=d.index, open=d['Open'], high=d['High'], low=d['Low'], close=d['Close'],
+        increasing_line_color='#00ff88', decreasing_line_color='#ff4444', name="Price"
     ), row=1, col=1)
 
-    # SMAs
-    for col_name, color, name in [('SMA_20', '#00d4ff', 'SMA20'), ('SMA_50', '#ffaa00', 'SMA50')]:
-        if col_name in df_plot.columns:
-            fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot[col_name],
-                line=dict(color=color, width=1.2), name=name, opacity=0.8), row=1, col=1)
-
-    # BB
-    if 'BB_Up' in df_plot.columns:
-        fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['BB_Up'],
-            line=dict(color='#8888ff', width=0.8, dash='dot'), name='BB Upper', opacity=0.6), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['BB_Low'],
-            line=dict(color='#8888ff', width=0.8, dash='dot'), name='BB Lower', opacity=0.6,
-            fill='tonexty', fillcolor='rgba(136,136,255,0.05)'), row=1, col=1)
-
-    # VWAP
-    if 'VWAP' in df_plot.columns and current_mode == "Intraday":
-        fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['VWAP'],
+    for col, color, name in [('SMA_20','#00d4ff','SMA20'),('SMA_50','#ffaa00','SMA50')]:
+        if col in d.columns:
+            fig.add_trace(go.Scatter(x=d.index, y=d[col], line=dict(color=color, width=1.2),
+                                     name=name, opacity=0.85), row=1, col=1)
+    if 'BB_Up' in d.columns:
+        fig.add_trace(go.Scatter(x=d.index, y=d['BB_Up'],
+            line=dict(color='#9988ff', width=0.8, dash='dot'), name='BB+', opacity=0.6), row=1, col=1)
+        fig.add_trace(go.Scatter(x=d.index, y=d['BB_Low'],
+            line=dict(color='#9988ff', width=0.8, dash='dot'), name='BB-', opacity=0.6,
+            fill='tonexty', fillcolor='rgba(153,136,255,0.05)'), row=1, col=1)
+    if 'VWAP' in d.columns and current_mode == "Intraday":
+        fig.add_trace(go.Scatter(x=d.index, y=d['VWAP'],
             line=dict(color='#ff88ff', width=1.5), name='VWAP'), row=1, col=1)
 
-    # Volume
-    colors = ['#00ff88' if c >= o else '#ff4444'
-              for c, o in zip(df_plot['Close'], df_plot['Open'])]
-    fig.add_trace(go.Bar(x=df_plot.index, y=df_plot['Volume'],
-        marker_color=colors, name='Volume', opacity=0.7), row=2, col=1)
+    colors_v = ['#00ff88' if c >= o else '#ff4444' for c, o in zip(d['Close'], d['Open'])]
+    fig.add_trace(go.Bar(x=d.index, y=d['Volume'], marker_color=colors_v,
+                         name='Vol', opacity=0.7), row=2, col=1)
+    if 'Vol_SMA' in d.columns:
+        fig.add_trace(go.Scatter(x=d.index, y=d['Vol_SMA'],
+            line=dict(color='#ffaa00', width=1), name='VolAvg'), row=2, col=1)
 
-    if 'Volume_SMA_20' in df_plot.columns:
-        fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['Volume_SMA_20'],
-            line=dict(color='#ffaa00', width=1), name='Vol Avg'), row=2, col=1)
-
-    # RSI
-    if 'RSI' in df_plot.columns:
-        fig.add_trace(go.Scatter(x=df_plot.index, y=df_plot['RSI'],
+    if 'RSI' in d.columns:
+        fig.add_trace(go.Scatter(x=d.index, y=d['RSI'],
             line=dict(color='#00d4ff', width=1.5), name='RSI'), row=3, col=1)
-        fig.add_hline(y=70, line_color='#ff4444', line_dash='dot', opacity=0.5, row=3, col=1)
-        fig.add_hline(y=30, line_color='#00ff88', line_dash='dot', opacity=0.5, row=3, col=1)
+    if 'Stoch_K' in d.columns:
+        fig.add_trace(go.Scatter(x=d.index, y=d['Stoch_K'],
+            line=dict(color='#ff88aa', width=1, dash='dot'), name='Stoch K'), row=3, col=1)
 
-    grid_style = dict(gridcolor='rgba(255,255,255,0.04)', showgrid=True, zeroline=False)
-
+    gs = dict(gridcolor='rgba(255,255,255,0.04)', showgrid=True, zeroline=False)
     fig.update_layout(
-        template='plotly_dark',
-        paper_bgcolor='#0a0e1a',
-        plot_bgcolor='#0d1520',
-        height=550,
-        showlegend=False,
-        xaxis_rangeslider_visible=False,
-        margin=dict(l=10, r=10, t=30, b=10),
-        font=dict(color='#7a8fa6', size=11),
-        xaxis=grid_style,
-        xaxis2=grid_style,
-        xaxis3=grid_style,
-        yaxis=grid_style,
-        yaxis2=grid_style,
-        yaxis3=grid_style,
+        template='plotly_dark', paper_bgcolor='#0a0e1a', plot_bgcolor='#0d1520',
+        height=560, showlegend=False, xaxis_rangeslider_visible=False,
+        margin=dict(l=8, r=8, t=30, b=8), font=dict(color='#7a8fa6', size=11),
+        xaxis=gs, xaxis2=gs, xaxis3=gs, yaxis=gs, yaxis2=gs, yaxis3=gs
     )
-
+    for y_val, color in [(70,'#ff4444'),(30,'#00ff88'),(80,'#ff8800'),(20,'#00ff88')]:
+        fig.add_hline(y=y_val, line_color=color, line_dash='dot', opacity=0.4, row=3, col=1)
     return fig
 
-# ================= NEWS & SENTIMENT =================
-@st.cache_data(ttl=1800, show_spinner=False)
-def get_news_sentiment(symbol):
-    """Get news using yfinance (no API key needed)"""
+# ================= OPTIONS CHAIN =================
+@st.cache_data(ttl=300, show_spinner=False)
+def get_options_data(symbol):
     try:
-        ticker = yf.Ticker(symbol)
-        news = ticker.news
-        if not news:
-            return []
+        t = yf.Ticker(symbol)
+        exps = t.options
+        if not exps:
+            return None, None, None
+        exp = exps[0]
+        chain = t.option_chain(exp)
+        calls = chain.calls[['strike','lastPrice','volume','openInterest','impliedVolatility']].copy()
+        puts  = chain.puts [['strike','lastPrice','volume','openInterest','impliedVolatility']].copy()
+        calls.columns = ['Strike','Call Price','Call Vol','Call OI','Call IV']
+        puts.columns  = ['Strike','Put Price', 'Put Vol', 'Put OI', 'Put IV']
+        merged = pd.merge(calls, puts, on='Strike', how='outer').fillna(0)
+        total_call_oi = calls['Call OI'].sum()
+        total_put_oi  = puts['Put OI'].sum()
+        pcr = round(total_put_oi / (total_call_oi + 1e-9), 2)
+        return merged, pcr, exp
+    except:
+        return None, None, None
 
-        results = []
-        for item in news[:5]:
-            title = item.get('title', '')
-            link  = item.get('link', '#')
-            pub   = item.get('providerPublishTime', 0)
+# ================= RISK MANAGEMENT =================
+def calc_position_size(capital, risk_pct, entry, sl, target):
+    risk_amt  = capital * (risk_pct / 100)
+    sl_dist   = abs(entry - sl)
+    if sl_dist == 0:
+        return 0, 0, 0, 0, 0
+    qty       = int(risk_amt / sl_dist)
+    invest    = qty * entry
+    max_loss  = qty * sl_dist
+    max_gain  = qty * abs(target - entry)
+    rr_ratio  = round(max_gain / (max_loss + 1e-9), 2)
+    return qty, round(invest, 2), round(max_loss, 2), round(max_gain, 2), rr_ratio
 
-            # Simple keyword sentiment
-            pos_words = ['surge', 'gain', 'profit', 'growth', 'bullish', 'rally', 'buy',
-                         'strong', 'record', 'upgrade', 'beat', 'rise', 'positive', 'win']
-            neg_words = ['fall', 'drop', 'loss', 'bearish', 'sell', 'decline', 'weak',
-                         'downgrade', 'miss', 'crash', 'risk', 'negative', 'concern', 'cut']
+# ================= PRICE ALERTS =================
+def check_alerts(alerts, current_prices):
+    triggered = []
+    remaining = []
+    for alert in alerts:
+        sym   = alert['symbol']
+        price = current_prices.get(sym, 0)
+        if price == 0:
+            remaining.append(alert)
+            continue
+        hit = False
+        if alert['condition'] == "Above" and price >= alert['target']:
+            hit = True
+        elif alert['condition'] == "Below" and price <= alert['target']:
+            hit = True
+        if hit:
+            triggered.append({**alert, 'triggered_price': price,
+                               'triggered_at': now.strftime('%H:%M:%S')})
+            send_telegram(f"🔔 ALERT: {sym} {alert['condition']} ₹{alert['target']:.2f}\nCurrent: ₹{price:.2f}")
+        else:
+            remaining.append(alert)
+    return triggered, remaining
 
-            title_lower = title.lower()
-            pos = sum(1 for w in pos_words if w in title_lower)
-            neg = sum(1 for w in neg_words if w in title_lower)
-
-            if pos > neg:
-                sentiment = "POSITIVE"
-                sent_score = min(100, 50 + pos * 15)
-            elif neg > pos:
-                sentiment = "NEGATIVE"
-                sent_score = max(0, 50 - neg * 15)
-            else:
-                sentiment = "NEUTRAL"
-                sent_score = 50
-
-            pub_dt = datetime.fromtimestamp(pub).strftime('%d %b, %H:%M') if pub else "Recent"
-            results.append({
-                'title': title,
-                'link': link,
-                'sentiment': sentiment,
-                'score': sent_score,
-                'time': pub_dt
-            })
-        return results
+# ================= NEWS =================
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_news(symbol):
+    try:
+        news = yf.Ticker(symbol).news or []
+        pos_w = ['surge','gain','profit','growth','bullish','rally','buy','strong','record','upgrade','beat','rise']
+        neg_w = ['fall','drop','loss','bearish','sell','decline','weak','downgrade','miss','crash','risk','cut']
+        out = []
+        for n in news[:5]:
+            title = n.get('title','')
+            tl    = title.lower()
+            pos   = sum(1 for w in pos_w if w in tl)
+            neg   = sum(1 for w in neg_w if w in tl)
+            sent  = "POSITIVE" if pos > neg else "NEGATIVE" if neg > pos else "NEUTRAL"
+            score = min(100, 50 + pos*15) if pos > neg else max(0, 50 - neg*15) if neg > pos else 50
+            ts    = n.get('providerPublishTime', 0)
+            dt    = datetime.fromtimestamp(ts).strftime('%d %b %H:%M') if ts else "Recent"
+            out.append({'title': title, 'link': n.get('link','#'),
+                        'sentiment': sent, 'score': score, 'time': dt})
+        return out
     except:
         return []
 
-# ================= BACKTESTING ENGINE =================
-def run_backtest(symbol, current_mode, sl_pct, tg_pct):
-    try:
-        df = yf.Ticker(symbol).history(period="1y")
-        if df is None or len(df) < 100:
-            return None
+# ===================== HEADER =====================
+st.markdown("""
+<div class="main-header">
+    <h1>⚡ QUANTEDGE AI v3.0</h1>
+    <p>NSE INDIA · CRYPTO · US STOCKS — ALGORITHMIC TRADING TERMINAL</p>
+</div>
+""", unsafe_allow_html=True)
 
-        df = compute_indicators(df, "Swing")
-        df = df.dropna()
+# ===================== TOP BAR =====================
+is_bull, regime_txt, regime_str = get_market_regime(BENCH, mode)
+total_inv = sum(st.session_state.entry_price.get(s,0) * q
+                for s,q in st.session_state.positions.items() if q > 0)
+total_val = st.session_state.balance + total_inv
+pnl       = total_val - 100000.0
+open_pos  = len([q for q in st.session_state.positions.values() if q > 0])
 
-        trades = []
-        in_trade = False
-        entry_p = 0
-        entry_i = 0
-
-        for i in range(50, len(df)):
-            row = df.iloc[i]
-            price = row['Close']
-            rsi = row['RSI']
-            macd = row['MACD']
-            sig = row['Signal_Line']
-            sma50 = row['SMA_50']
-            vol = row['Volume']
-            avg_vol = row['Volume_SMA_20']
-
-            if not in_trade:
-                # Entry condition
-                if (rsi < 45 and price > sma50 and macd > sig and vol > avg_vol * 1.3):
-                    in_trade = True
-                    entry_p = price
-                    entry_i = i
-            else:
-                pnl_pct = (price - entry_p) / entry_p
-                days_held = i - entry_i
-
-                if pnl_pct >= tg_pct:
-                    trades.append({'type': 'WIN', 'pnl': pnl_pct, 'days': days_held})
-                    in_trade = False
-                elif pnl_pct <= -sl_pct:
-                    trades.append({'type': 'LOSS', 'pnl': pnl_pct, 'days': days_held})
-                    in_trade = False
-                elif days_held >= 20:
-                    trades.append({'type': 'TIMEOUT', 'pnl': pnl_pct, 'days': days_held})
-                    in_trade = False
-
-        if not trades:
-            return None
-
-        total = len(trades)
-        wins  = len([t for t in trades if t['type'] == 'WIN'])
-        losses= len([t for t in trades if t['type'] == 'LOSS'])
-        total_pnl = sum(t['pnl'] for t in trades) * 100
-        win_rate  = (wins / total * 100) if total > 0 else 0
-        avg_days  = np.mean([t['days'] for t in trades])
-
-        return {
-            'total_trades': total,
-            'wins': wins,
-            'losses': losses,
-            'win_rate': win_rate,
-            'total_pnl_pct': total_pnl,
-            'avg_days': avg_days,
-            'trades': trades
-        }
-    except:
-        return None
-
-# ================= MAIN APP =================
-can_trade = not (mode == "Intraday" and (now.hour > 14 or (now.hour == 14 and now.minute >= 30)))
-is_bullish, regime_status, regime_strength = get_market_regime(mode)
-
-# Top metrics bar
-m1, m2, m3, m4, m5 = st.columns(5)
-total_invested = sum(st.session_state.entry_price.get(s, 0) * q
-                     for s, q in st.session_state.positions.items() if q > 0)
-total_val = st.session_state.balance + total_invested
-pnl = total_val - 100000.0
-
-with m1:
-    trend_icon = "🟢" if is_bullish else "🔴"
-    st.metric("Market", f"{trend_icon} {'Bullish' if is_bullish else 'Bearish'}", regime_status.split('(')[0].strip())
-with m2:
-    st.metric("Portfolio", f"₹{total_val:,.0f}", f"{'+'if pnl>=0 else ''}{pnl:,.0f}")
-with m3:
-    st.metric("Cash", f"₹{st.session_state.balance:,.0f}")
-with m4:
-    open_pos = len([q for q in st.session_state.positions.values() if q > 0])
-    st.metric("Open Positions", open_pos)
-with m5:
-    pnl_pct = pnl / 1000
-    st.metric("Total P&L %", f"{pnl_pct:+.2f}%")
+c1,c2,c3,c4,c5,c6 = st.columns(6)
+c1.metric("Market",     f"{'🟢' if is_bull else '🔴'} {'Bull' if is_bull else 'Bear'}", regime_txt.split('(')[0].strip())
+c2.metric("Portfolio",  f"{CURRENCY}{total_val:,.0f}", f"{'+' if pnl>=0 else ''}{pnl:,.0f}")
+c3.metric("Cash",       f"{CURRENCY}{st.session_state.balance:,.0f}")
+c4.metric("Positions",  open_pos)
+c5.metric("P&L %",      f"{pnl/1000:+.2f}%")
+c6.metric("Alerts Set", len(st.session_state.price_alerts))
 
 st.divider()
 
-# ================= TABS =================
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+# ===================== TABS =====================
+tab1,tab2,tab3,tab4,tab5,tab6,tab7,tab8 = st.tabs([
     "📡 Live Radar",
-    "📊 Charts & Analysis",
-    "📰 News & Sentiment",
+    "📊 Chart + S&R",
+    "📈 Options Chain",
+    "⚠️ Risk Calculator",
+    "🔔 Price Alerts",
+    "📰 News",
     "🧪 Backtest",
     "💼 Portfolio"
 ])
 
-# ===================== TAB 1: RADAR =====================
+# ========== TAB 1: RADAR ==========
 with tab1:
-    if st.button("🔄 Refresh Signals", type="primary"):
-        st.cache_data.clear()
-        st.rerun()
+    col_r1, col_r2 = st.columns([3,1])
+    with col_r1:
+        st.markdown(f"### 📡 Live Radar — {market_tab}")
+    with col_r2:
+        if st.button("🔄 Refresh", type="primary"):
+            st.cache_data.clear(); st.rerun()
 
     leaderboard = []
+    current_prices = {}
 
-    with st.spinner("📡 Scanning 37 stocks..."):
-        for stock in stocks:
-            df_s = get_data(stock, mode)
-            signal, price, score, status_msg, signals = advanced_engine(stock, df_s, mode)
-            leaderboard.append((stock, signal, score, price, status_msg, signals))
+    with st.spinner("Scanning market..."):
+        for stk in ACTIVE_STOCKS:
+            df_s = get_data(stk, mode)
+            sig, price, score, status, sigs = advanced_engine(stk, df_s, mode)
+            leaderboard.append((stk, sig, score, price, status, sigs))
+            current_prices[stk] = price
 
-    leaderboard = sorted(leaderboard, key=lambda x: x[2], reverse=True)
+    leaderboard.sort(key=lambda x: x[2], reverse=True)
 
-    # Auto trade execution
-    for stock, signal, score, price, _, sigs in leaderboard:
-        qty = st.session_state.positions.get(stock, 0)
-        if signal == "BUY" and qty == 0 and price > 0 and can_trade and score >= min_score:
-            alloc_pct = 0.15 if score >= 85 and is_bullish else 0.10 if is_bullish else 0.05
-            invest = st.session_state.balance * alloc_pct
+    # Check price alerts
+    triggered, st.session_state.price_alerts = check_alerts(
+        st.session_state.price_alerts, current_prices)
+    if triggered:
+        st.session_state.triggered_alerts.extend(triggered)
+        for t in triggered:
+            st.warning(f"🔔 ALERT TRIGGERED: **{t['symbol']}** {t['condition']} {CURRENCY}{t['target']:.2f} — Now: {CURRENCY}{t['triggered_price']:.2f}")
+
+    # Auto trade
+    for stk, sig, score, price, _, sigs in leaderboard:
+        qty = st.session_state.positions.get(stk, 0)
+        if sig == "BUY" and qty == 0 and price > 0 and can_trade and score >= min_score:
+            alloc = 0.15 if score >= 85 and is_bull else 0.10 if is_bull else 0.05
+            invest = st.session_state.balance * alloc
             q = int(invest / price)
             if q > 0 and invest <= st.session_state.balance:
-                st.session_state.positions[stock] = q
+                st.session_state.positions[stk] = q
                 st.session_state.balance -= q * price
-                st.session_state.entry_price[stock] = price
-                st.session_state.highest_price[stock] = price
-                entry_time = now.strftime('%H:%M')
-                st.session_state.trade_log.append({
-                    'time': entry_time, 'stock': stock, 'action': 'BUY',
-                    'price': price, 'qty': q, 'score': score
-                })
-                calc_tg = price * (1 + TARGET_PCT)
-                calc_sl = price * (1 - STOP_LOSS_PCT)
-                emoji = "🟢 [AGGRESSIVE]" if alloc_pct == 0.15 else "🔵 [STANDARD]"
-                send_telegram(f"{emoji} {mode} BUY: {stock}\nScore: {score}\nEntry: ₹{price:.2f}\nTarget: ₹{calc_tg:.2f}\nSL: ₹{calc_sl:.2f}")
+                st.session_state.entry_price[stk]   = price
+                st.session_state.highest_price[stk]  = price
+                st.session_state.trade_log.append({'time': now.strftime('%H:%M'), 'stock': stk,
+                    'action':'BUY','price':price,'qty':q,'score':score})
+                tg = price*(1+TARGET_PCT); sl = price*(1-STOP_LOSS_PCT)
+                send_telegram(f"🟢 BUY {stk}\nScore:{score} Entry:{CURRENCY}{price:.2f}\nTG:{CURRENCY}{tg:.2f} SL:{CURRENCY}{sl:.2f}")
 
-        elif signal == "SELL" and qty > 0 and price > 0:
-            pnl_trade = (price - st.session_state.entry_price.get(stock, price)) * qty
+        elif sig == "SELL" and qty > 0 and price > 0:
+            pnl_t = (price - st.session_state.entry_price.get(stk, price)) * qty
             st.session_state.balance += qty * price
-            st.session_state.positions[stock] = 0
-            st.session_state.trade_log.append({
-                'time': now.strftime('%H:%M'), 'stock': stock, 'action': 'SELL',
-                'price': price, 'qty': qty, 'pnl': pnl_trade
-            })
-            st.session_state.entry_price.pop(stock, None)
-            st.session_state.highest_price.pop(stock, None)
-            send_telegram(f"🔴 [{mode}] SELL: {stock} @ ₹{price:.2f} | P&L: ₹{pnl_trade:+.0f}")
+            st.session_state.positions[stk] = 0
+            st.session_state.trade_log.append({'time':now.strftime('%H:%M'),'stock':stk,
+                'action':'SELL','price':price,'qty':qty,'pnl':round(pnl_t,2)})
+            st.session_state.entry_price.pop(stk,None)
+            st.session_state.highest_price.pop(stk,None)
+            send_telegram(f"🔴 SELL {stk} @ {CURRENCY}{price:.2f} P&L:{CURRENCY}{pnl_t:+.0f}")
 
-    # Trailing stop
+    # Trailing SL
     for s, q in list(st.session_state.positions.items()):
         if q > 0:
             df2 = get_data(s, mode)
-            if df2 is None or len(df2) == 0:
-                continue
-            cp = float(df2["Close"].iloc[-1])
+            if df2 is None or len(df2) == 0: continue
+            cp = float(df2['Close'].iloc[-1])
             if s not in st.session_state.highest_price:
                 st.session_state.highest_price[s] = st.session_state.entry_price.get(s, cp)
             if cp > st.session_state.highest_price[s]:
                 st.session_state.highest_price[s] = cp
-            trailing_sl = st.session_state.highest_price[s] * (1 - STOP_LOSS_PCT)
+            trail = st.session_state.highest_price[s] * (1 - STOP_LOSS_PCT)
             entry = st.session_state.entry_price.get(s, cp)
             if mode == "Intraday" and now.hour == 15 and now.minute >= 20:
-                st.session_state.balance += q * cp
-                st.session_state.positions[s] = 0
-                send_telegram(f"⏳ EOD EXIT: {s} @ ₹{cp:.2f}")
-            elif cp <= trailing_sl:
-                st.session_state.balance += q * cp
-                st.session_state.positions[s] = 0
-                send_telegram(f"🛑 Trailing SL: {s} @ ₹{cp:.2f}")
-            elif cp >= entry * (1 + TARGET_PCT):
-                st.session_state.balance += q * cp
-                st.session_state.positions[s] = 0
-                send_telegram(f"🎯 Target Hit: {s} @ ₹{cp:.2f}")
+                st.session_state.balance += q*cp; st.session_state.positions[s]=0
+                send_telegram(f"⏳ EOD EXIT {s} @ {CURRENCY}{cp:.2f}")
+            elif cp <= trail:
+                st.session_state.balance += q*cp; st.session_state.positions[s]=0
+                send_telegram(f"🛑 Trail SL {s} @ {CURRENCY}{cp:.2f}")
+            elif cp >= entry*(1+TARGET_PCT):
+                st.session_state.balance += q*cp; st.session_state.positions[s]=0
+                send_telegram(f"🎯 Target Hit {s} @ {CURRENCY}{cp:.2f}")
 
-    # Display signals
-    col_b, col_s = st.columns(2)
-
-    with col_b:
+    # Display
+    cb, cs = st.columns(2)
+    with cb:
         st.markdown("### 🟢 BUY Signals")
-        buy_list = [s for s in leaderboard if s[1] == "BUY"]
-        if buy_list:
-            for item in buy_list[:8]:
-                stk, sig, sc, pr, msg, sigs = item
-                explanation = generate_ai_explanation(stk, sig, sc, sigs, pr)
-                bar_w = min(100, sc)
-                st.markdown(f"""
-                <div class="signal-card-buy">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="color:#00ff88; font-weight:700; font-size:1rem;">{stk}</span>
-                        <span style="color:#00ff88; font-size:1.1rem; font-weight:800;">₹{pr:.2f}</span>
-                    </div>
-                    <div style="color:#aaa; font-size:0.78rem; margin:4px 0;">{msg}</div>
-                    <div class="score-bar-container">
-                        <div style="background:#00ff88; width:{bar_w}%; height:6px; border-radius:4px;"></div>
-                    </div>
-                    <div style="color:#00ff88; font-size:0.75rem; margin-top:4px;">Score: {sc}/100</div>
-                    <div class="ai-explanation" style="margin-top:8px;">🤖 {explanation}</div>
+        buys = [x for x in leaderboard if x[1]=="BUY"]
+        if buys:
+            for stk,sig,sc,pr,msg,sigs in buys[:8]:
+                expl = ai_explain(stk,sig,sc,sigs,pr,CURRENCY)
+                bw = min(100,max(0,sc))
+                st.markdown(f"""<div class="card-buy">
+                <div style="display:flex;justify-content:space-between">
+                  <span style="color:#00ff88;font-weight:700">{stk}</span>
+                  <span style="color:#00ff88;font-weight:800">{CURRENCY}{pr:.2f}</span>
                 </div>
-                """, unsafe_allow_html=True)
+                <div style="color:#aaa;font-size:0.77rem;margin:3px 0">{msg[:60]}</div>
+                <div style="background:#003d1f;border-radius:3px;height:5px;margin:5px 0">
+                  <div style="background:#00ff88;width:{bw}%;height:5px;border-radius:3px"></div>
+                </div>
+                <div style="color:#00ff88;font-size:0.73rem">Score: {sc}/100</div>
+                <div class="ai-box" style="margin-top:7px">🤖 {expl}</div>
+                </div>""", unsafe_allow_html=True)
         else:
-            st.info("No strong BUY signals right now. Market scan chal raha hai...")
+            st.info("No BUY signals right now.")
 
-    with col_s:
+    with cs:
         st.markdown("### 🔴 SELL Signals")
-        sell_list = [s for s in leaderboard if s[1] == "SELL"]
-        if sell_list:
-            for item in sell_list[:6]:
-                stk, sig, sc, pr, msg, sigs = item
-                explanation = generate_ai_explanation(stk, sig, sc, sigs, pr)
-                st.markdown(f"""
-                <div class="signal-card-sell">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="color:#ff4444; font-weight:700;">{stk}</span>
-                        <span style="color:#ff4444; font-weight:800;">₹{pr:.2f}</span>
-                    </div>
-                    <div style="color:#aaa; font-size:0.78rem; margin:4px 0;">{msg}</div>
-                    <div class="ai-explanation" style="margin-top:8px;">🤖 {explanation}</div>
+        sells = [x for x in leaderboard if x[1]=="SELL"]
+        if sells:
+            for stk,sig,sc,pr,msg,sigs in sells[:6]:
+                expl = ai_explain(stk,sig,sc,sigs,pr,CURRENCY)
+                st.markdown(f"""<div class="card-sell">
+                <div style="display:flex;justify-content:space-between">
+                  <span style="color:#ff4444;font-weight:700">{stk}</span>
+                  <span style="color:#ff4444;font-weight:800">{CURRENCY}{pr:.2f}</span>
                 </div>
-                """, unsafe_allow_html=True)
+                <div style="color:#aaa;font-size:0.77rem;margin:3px 0">{msg[:60]}</div>
+                <div class="ai-box" style="margin-top:7px">🤖 {expl}</div>
+                </div>""", unsafe_allow_html=True)
         else:
             st.info("No SELL signals.")
 
     st.divider()
-    st.markdown("### 📋 All Stocks Radar")
+    st.markdown("### 📋 Full Radar Table")
     rows = []
-    for stk, sig, sc, pr, msg, _ in leaderboard:
-        emoji = "🟢" if sig == "BUY" else "🔴" if sig == "SELL" else "⚪"
-        rows.append({"Stock": stk, "Signal": f"{emoji} {sig}", "Score": sc,
-                     "Price (₹)": f"{pr:.2f}" if pr > 0 else "-", "Analysis": msg[:50]})
+    for stk,sig,sc,pr,msg,_ in leaderboard:
+        ico = "🟢" if sig=="BUY" else "🔴" if sig=="SELL" else "⚪"
+        rows.append({"Stock":stk,"Signal":f"{ico} {sig}","Score":sc,
+                     f"Price({CURRENCY})":f"{pr:.2f}" if pr>0 else "-","Analysis":msg[:55]})
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True,
-                 column_config={"Score": st.column_config.ProgressColumn("Score", min_value=0, max_value=100)})
+        column_config={"Score": st.column_config.ProgressColumn("Score",min_value=0,max_value=100)})
 
-# ===================== TAB 2: CHARTS =====================
+# ========== TAB 2: CHART + S&R ==========
 with tab2:
-    st.markdown("### 📊 Advanced Chart Analysis")
-    selected = st.selectbox("Stock Select Karo:", stocks)
-    df_chart = get_data(selected, mode)
+    st.markdown("### 📊 Advanced Chart + Support & Resistance")
+    all_stocks = ACTIVE_STOCKS
+    sel = st.selectbox("Stock:", all_stocks, key="chart_sel")
+    df_c = get_data(sel, mode)
 
-    if df_chart is not None and len(df_chart) >= 50:
-        df_chart = compute_indicators(df_chart, mode)
-        sig, pr, sc, msg, sigs = advanced_engine(selected, df_chart, mode)
+    if df_c is not None and len(df_c) >= 50:
+        df_c  = compute_indicators(df_c, mode)
+        sig,pr,sc,msg,sigs = advanced_engine(sel, df_c, mode)
+        sr    = get_sr_levels(df_c)
 
-        c1, c2, c3, c4 = st.columns(4)
-        signal_color = "🟢" if sig == "BUY" else "🔴" if sig == "SELL" else "⚪"
-        c1.metric("Signal", f"{signal_color} {sig}")
-        c2.metric("Price", f"₹{pr:.2f}")
-        c3.metric("Score", f"{sc}/100")
-        if df_chart is not None and 'RSI' in df_chart.columns:
-            c4.metric("RSI", f"{df_chart['RSI'].iloc[-1]:.1f}")
+        # Metrics row
+        m1,m2,m3,m4,m5 = st.columns(5)
+        ico = "🟢" if sig=="BUY" else "🔴" if sig=="SELL" else "⚪"
+        m1.metric("Signal", f"{ico} {sig}")
+        m2.metric("Price",  f"{CURRENCY}{pr:.2f}")
+        m3.metric("Score",  f"{sc}/100")
+        m4.metric("RSI",    f"{df_c['RSI'].iloc[-1]:.1f}")
+        m5.metric("ATR",    f"{CURRENCY}{df_c['ATR'].iloc[-1]:.2f}")
 
-        fig = plot_candlestick(df_chart, selected, mode)
-        st.plotly_chart(fig, use_container_width=True)
+        # S&R levels alongside chart
+        ch_col, sr_col = st.columns([3,1])
 
-        # Signal breakdown table
-        st.markdown("### 🔍 Signal Breakdown")
+        with ch_col:
+            fig = plot_chart(df_c, sel, mode)
+            # Add S&R lines to chart
+            if sr:
+                for r in sr['resistances']:
+                    fig.add_hline(y=r, line_color='#ff4444', line_dash='dash',
+                                  opacity=0.5, row=1, col=1,
+                                  annotation_text=f"R {CURRENCY}{r}", annotation_font_color='#ff4444')
+                for s in sr['supports']:
+                    fig.add_hline(y=s, line_color='#00ff88', line_dash='dash',
+                                  opacity=0.5, row=1, col=1,
+                                  annotation_text=f"S {CURRENCY}{s}", annotation_font_color='#00ff88')
+                fig.add_hline(y=sr['pivot'], line_color='#ffaa00', line_dash='dot',
+                              opacity=0.6, row=1, col=1,
+                              annotation_text=f"Pivot {CURRENCY}{sr['pivot']}", annotation_font_color='#ffaa00')
+            st.plotly_chart(fig, use_container_width=True)
+
+        with sr_col:
+            st.markdown("#### 🎯 Key Levels")
+            if sr:
+                st.markdown(f"**Current:** `{CURRENCY}{sr['current']}`")
+                st.markdown(f"**Pivot:**   `{CURRENCY}{sr['pivot']}`")
+                st.markdown("---")
+                st.markdown("**Resistances 🔴**")
+                for r in sr['resistances']:
+                    diff = ((r - sr['current'])/sr['current']*100)
+                    st.markdown(f"<span class='sr-sell'>{CURRENCY}{r}</span> <span style='color:#555;font-size:0.78rem'>(+{diff:.1f}%)</span>", unsafe_allow_html=True)
+                st.markdown("**Supports 🟢**")
+                for s in sr['supports']:
+                    diff = ((s - sr['current'])/sr['current']*100)
+                    st.markdown(f"<span class='sr-buy'>{CURRENCY}{s}</span> <span style='color:#555;font-size:0.78rem'>({diff:.1f}%)</span>", unsafe_allow_html=True)
+            else:
+                st.info("S&R data unavailable.")
+
+        # Signal breakdown
+        st.markdown("#### 🔍 Signal Breakdown")
         if sigs:
-            sig_rows = []
-            for s in sigs:
-                color = "🟢" if s[2] == "BULLISH" else "🔴" if s[2] == "BEARISH" else "🟡"
-                sig_rows.append({"Indicator": s[0], "Status": f"{color} {s[2]}", "Detail": s[3]})
+            sig_rows = [{"Indicator":s[0],
+                         "Status": f"{'🟢' if s[1]=='BULLISH' else '🔴' if s[1]=='BEARISH' else '🟡'} {s[1]}",
+                         "Detail":s[2]} for s in sigs]
             st.dataframe(pd.DataFrame(sig_rows), use_container_width=True, hide_index=True)
 
-        # AI Explanation
-        st.markdown("### 🤖 AI Analysis")
-        explanation = generate_ai_explanation(selected, sig, sc, sigs, pr)
-        st.markdown(f"""<div class="ai-explanation" style="font-size:0.95rem; padding:16px;">
-        🤖 <strong>AI Explanation:</strong><br><br>{explanation}
-        </div>""", unsafe_allow_html=True)
+        st.markdown("#### 🤖 AI Analysis")
+        expl = ai_explain(sel, sig, sc, sigs, pr, CURRENCY)
+        st.markdown(f'<div class="ai-box" style="font-size:0.93rem;padding:14px">🤖 {expl}</div>', unsafe_allow_html=True)
     else:
         st.warning("Data load nahi hua. Dobara try karo.")
 
-# ===================== TAB 3: NEWS =====================
+# ========== TAB 3: OPTIONS CHAIN ==========
 with tab3:
-    st.markdown("### 📰 Live News & Sentiment Analysis")
-    news_stock = st.selectbox("Stock Select Karo (News):", stocks, key="news_sel")
+    st.markdown("### 📈 F&O Options Chain")
+    if "NSE" in market_tab:
+        fo_stocks = ["NIFTY","BANKNIFTY","RELIANCE.NS","TCS.NS","INFY.NS","TATAMOTORS.NS",
+                     "SBIN.NS","KOTAKBANK.NS","HCLTECH.NS","BHARTIARTL.NS","AXISBANK.NS"]
+    elif "US" in market_tab:
+        fo_stocks = ["AAPL","TSLA","NVDA","AMZN","MSFT","GOOGL","AMD","META"]
+    else:
+        fo_stocks = ["BTC-USD","ETH-USD"]
 
-    with st.spinner("📰 News fetch ho rahi hai..."):
-        news_items = get_news_sentiment(news_stock)
+    fo_sel = st.selectbox("Select Stock/Index:", fo_stocks)
+    fo_sym = fo_sel.replace("NIFTY","^NSEI").replace("BANKNIFTY","^NSEBANK")
+
+    with st.spinner("Options data fetch ho rahi hai..."):
+        chain, pcr, expiry = get_options_data(fo_sym)
+
+    if chain is not None and pcr is not None:
+        pc1,pc2,pc3 = st.columns(3)
+        pcr_color   = "🟢" if pcr < 0.8 else "🔴" if pcr > 1.2 else "🟡"
+        pcr_signal  = "Bullish (Calls dominant)" if pcr < 0.8 else "Bearish (Puts dominant)" if pcr > 1.2 else "Neutral"
+        pc1.metric("Put/Call Ratio (PCR)", f"{pcr_color} {pcr}")
+        pc2.metric("PCR Signal", pcr_signal)
+        pc3.metric("Expiry", str(expiry))
+
+        st.info("**PCR Guide:** PCR < 0.8 = Bullish | PCR 0.8-1.2 = Neutral | PCR > 1.2 = Bearish")
+
+        # OI Chart
+        if 'Call OI' in chain.columns and 'Put OI' in chain.columns:
+            top_chain = chain.nlargest(15, 'Call OI').sort_values('Strike')
+            fig_oi = go.Figure()
+            fig_oi.add_trace(go.Bar(x=top_chain['Strike'], y=top_chain['Call OI'],
+                name='Call OI', marker_color='#00ff88', opacity=0.8))
+            fig_oi.add_trace(go.Bar(x=top_chain['Strike'], y=top_chain['Put OI'],
+                name='Put OI',  marker_color='#ff4444', opacity=0.8))
+            fig_oi.update_layout(
+                template='plotly_dark', paper_bgcolor='#0a0e1a', plot_bgcolor='#0d1520',
+                height=320, barmode='group', title="Open Interest by Strike",
+                margin=dict(l=8,r=8,t=35,b=8), font=dict(color='#7a8fa6',size=11),
+                xaxis=dict(gridcolor='rgba(255,255,255,0.04)', showgrid=True),
+                yaxis=dict(gridcolor='rgba(255,255,255,0.04)', showgrid=True),
+            )
+            st.plotly_chart(fig_oi, use_container_width=True)
+
+        st.markdown("#### 📋 Options Chain Table")
+        display_cols = [c for c in ['Strike','Call Price','Call OI','Call Vol',
+                                     'Put Price','Put OI','Put Vol'] if c in chain.columns]
+        show = chain[display_cols].sort_values('Strike').reset_index(drop=True)
+        st.dataframe(show.head(20), use_container_width=True, hide_index=True)
+    else:
+        st.warning(f"**{fo_sel}** ke liye options data nahi mila.")
+        st.info("NSE F&O data ke liye yfinance limited hai. Try: AAPL, TSLA (US stocks) better options data dete hain.")
+
+# ========== TAB 4: RISK CALCULATOR ==========
+with tab4:
+    st.markdown("### ⚠️ Risk Management Calculator")
+    st.info("Har trade se pehle risk calculate karo — professional traders always do this!")
+
+    rc1, rc2 = st.columns(2)
+    with rc1:
+        st.markdown("#### 📥 Trade Parameters")
+        cap     = st.number_input("Capital (₹)", value=100000, step=5000, min_value=1000)
+        risk_p  = st.slider("Risk per trade (%)", 0.5, 5.0, 1.5, 0.1)
+        entry_p = st.number_input(f"Entry Price ({CURRENCY})", value=500.0, step=0.5, min_value=0.1)
+        sl_p    = st.number_input(f"Stop Loss Price ({CURRENCY})", value=480.0, step=0.5, min_value=0.1)
+        tg_p    = st.number_input(f"Target Price ({CURRENCY})", value=560.0, step=0.5, min_value=0.1)
+
+    qty_r, invest_r, max_loss_r, max_gain_r, rr = calc_position_size(cap, risk_p, entry_p, sl_p, tg_p)
+
+    with rc2:
+        st.markdown("#### 📊 Calculated Results")
+        st.markdown(f"""<div class="risk-box">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px">
+          <div>
+            <div style="color:#7a8fa6;font-size:0.75rem;text-transform:uppercase">Qty to Buy</div>
+            <div style="color:#00d4ff;font-size:1.5rem;font-weight:700">{qty_r}</div>
+          </div>
+          <div>
+            <div style="color:#7a8fa6;font-size:0.75rem;text-transform:uppercase">Investment</div>
+            <div style="color:#00d4ff;font-size:1.5rem;font-weight:700">{CURRENCY}{invest_r:,.0f}</div>
+          </div>
+          <div>
+            <div style="color:#7a8fa6;font-size:0.75rem;text-transform:uppercase">Max Loss</div>
+            <div style="color:#ff4444;font-size:1.5rem;font-weight:700">-{CURRENCY}{max_loss_r:,.0f}</div>
+          </div>
+          <div>
+            <div style="color:#7a8fa6;font-size:0.75rem;text-transform:uppercase">Max Gain</div>
+            <div style="color:#00ff88;font-size:1.5rem;font-weight:700">+{CURRENCY}{max_gain_r:,.0f}</div>
+          </div>
+          <div>
+            <div style="color:#7a8fa6;font-size:0.75rem;text-transform:uppercase">Risk:Reward</div>
+            <div style="color:{'#00ff88' if rr >= 2 else '#ffaa00' if rr >= 1 else '#ff4444'};font-size:1.5rem;font-weight:700">1 : {rr}</div>
+          </div>
+          <div>
+            <div style="color:#7a8fa6;font-size:0.75rem;text-transform:uppercase">Portfolio %</div>
+            <div style="color:#00d4ff;font-size:1.5rem;font-weight:700">{invest_r/cap*100:.1f}%</div>
+          </div>
+        </div>
+        </div>""", unsafe_allow_html=True)
+
+        rr_msg = "✅ Excellent R:R (>2:1)" if rr >= 2 else "🟡 Acceptable R:R (1-2:1)" if rr >= 1 else "❌ Bad R:R — Adjust Target"
+        st.markdown(f"**{rr_msg}**")
+
+    # Position sizing across portfolio
+    st.divider()
+    st.markdown("#### 🧮 Portfolio Allocation Guide")
+    alloc_data = {
+        "Risk Level":   ["Conservative","Moderate","Aggressive","YOLO (avoid)"],
+        "Risk per Trade":[  "0.5%",        "1-2%",     "3-5%",      ">5%"],
+        "Suitable for": ["Beginners","Most traders","Experienced","Not recommended"],
+        "Max Drawdown": ["~5%",       "~15%",        "~30%",       "100%+"],
+    }
+    st.dataframe(pd.DataFrame(alloc_data), use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.markdown("#### 📐 Breakeven & Fees Calculator")
+    bro_col1, bro_col2 = st.columns(2)
+    with bro_col1:
+        brokerage_pct = st.number_input("Brokerage % (each side)", value=0.03, step=0.01, format="%.3f")
+        stt_pct       = st.number_input("STT % (on sell)", value=0.1, step=0.01)
+    with bro_col2:
+        total_brokerage = invest_r * (brokerage_pct/100) * 2
+        stt_cost        = invest_r * (stt_pct/100)
+        total_fees      = total_brokerage + stt_cost + 20  # +20 flat Zerodha style
+        breakeven_move  = (total_fees / (invest_r + 1e-9)) * 100
+        st.metric("Total Fees",    f"{CURRENCY}{total_fees:.2f}")
+        st.metric("Breakeven Move", f"{breakeven_move:.3f}%")
+        st.metric("Net Max Gain",   f"{CURRENCY}{max(0, max_gain_r - total_fees):.2f}")
+
+# ========== TAB 5: PRICE ALERTS ==========
+with tab5:
+    st.markdown("### 🔔 Price Alert System")
+    st.info("Alerts check hote hain jab bhi Live Radar tab refresh hota hai.")
+
+    a1, a2 = st.columns(2)
+    with a1:
+        st.markdown("#### ➕ New Alert")
+        alert_sym  = st.selectbox("Stock:", ACTIVE_STOCKS, key="alert_sym")
+        alert_cond = st.radio("Condition:", ["Above", "Below"], horizontal=True)
+        alert_tgt  = st.number_input(f"Target Price ({CURRENCY}):", value=500.0, step=1.0, min_value=0.1)
+        alert_note = st.text_input("Note (optional):", placeholder="e.g. Breakout level")
+
+        if st.button("🔔 Set Alert", type="primary"):
+            new_alert = {
+                'symbol': alert_sym, 'condition': alert_cond,
+                'target': alert_tgt, 'note': alert_note,
+                'created': now.strftime('%H:%M:%S')
+            }
+            st.session_state.price_alerts.append(new_alert)
+            st.success(f"✅ Alert set: {alert_sym} {alert_cond} {CURRENCY}{alert_tgt:.2f}")
+
+    with a2:
+        st.markdown("#### 📋 Active Alerts")
+        if st.session_state.price_alerts:
+            for i, al in enumerate(st.session_state.price_alerts):
+                col_al1, col_al2 = st.columns([4,1])
+                with col_al1:
+                    icon = "⬆️" if al['condition']=="Above" else "⬇️"
+                    note = f" — {al['note']}" if al.get('note') else ""
+                    st.markdown(f"""<div class="card-alert">
+                    <span style="color:#ffaa00;font-weight:700">{al['symbol']}</span>
+                    {icon} <span style="color:#fff">{CURRENCY}{al['target']:.2f}</span>
+                    <span style="color:#555;font-size:0.78rem">{note} | Set: {al['created']}</span>
+                    </div>""", unsafe_allow_html=True)
+                with col_al2:
+                    if st.button("🗑️", key=f"del_alert_{i}"):
+                        st.session_state.price_alerts.pop(i)
+                        st.rerun()
+        else:
+            st.info("Koi active alert nahi hai.")
+
+    st.divider()
+    st.markdown("#### ✅ Triggered Alerts History")
+    if st.session_state.triggered_alerts:
+        trig_rows = [{"Stock":t['symbol'],"Condition":t['condition'],
+                      f"Target({CURRENCY})":t['target'],
+                      f"Hit At({CURRENCY})":t.get('triggered_price','-'),
+                      "Time":t.get('triggered_at','-'),
+                      "Note":t.get('note','')} for t in st.session_state.triggered_alerts]
+        st.dataframe(pd.DataFrame(trig_rows), use_container_width=True, hide_index=True)
+        if st.button("🗑️ Clear History"):
+            st.session_state.triggered_alerts = []
+            st.rerun()
+    else:
+        st.info("Koi alert abhi tak trigger nahi hua.")
+
+# ========== TAB 6: NEWS ==========
+with tab6:
+    st.markdown("### 📰 Live News & Sentiment")
+    news_sel = st.selectbox("Stock:", ACTIVE_STOCKS, key="news_sel")
+
+    with st.spinner("Fetching news..."):
+        news_items = get_news(news_sel)
 
     if news_items:
-        overall_sent = np.mean([n['score'] for n in news_items])
-        sent_label = "POSITIVE 🟢" if overall_sent > 60 else "NEGATIVE 🔴" if overall_sent < 40 else "NEUTRAL 🟡"
-
-        s1, s2 = st.columns(2)
-        s1.metric("Overall Sentiment", sent_label, f"Score: {overall_sent:.0f}/100")
-        s2.metric("News Count", len(news_items))
-
+        avg_sent = np.mean([n['score'] for n in news_items])
+        slabel   = "🟢 POSITIVE" if avg_sent > 60 else "🔴 NEGATIVE" if avg_sent < 40 else "🟡 NEUTRAL"
+        n1,n2 = st.columns(2)
+        n1.metric("Overall Sentiment", slabel, f"Score: {avg_sent:.0f}/100")
+        n2.metric("Articles Found",    len(news_items))
         st.divider()
         for n in news_items:
-            color = "#00ff88" if n['sentiment'] == "POSITIVE" else "#ff4444" if n['sentiment'] == "NEGATIVE" else "#ffaa00"
-            icon = "🟢" if n['sentiment'] == "POSITIVE" else "🔴" if n['sentiment'] == "NEGATIVE" else "🟡"
-            st.markdown(f"""
-            <div class="news-card">
-                <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                    <span style="color:{color}; font-weight:600; font-size:0.8rem;">{icon} {n['sentiment']}</span>
-                    <span style="color:#555; font-size:0.75rem;">{n['time']}</span>
-                </div>
-                <div style="color:#c0cfe0; font-size:0.88rem; line-height:1.5;">{n['title']}</div>
-                <div style="margin-top:8px;">
-                    <a href="{n['link']}" target="_blank" style="color:#00d4ff; font-size:0.75rem; text-decoration:none;">📎 Full Article →</a>
-                </div>
+            color = "#00ff88" if n['sentiment']=="POSITIVE" else "#ff4444" if n['sentiment']=="NEGATIVE" else "#ffaa00"
+            icon  = "🟢" if n['sentiment']=="POSITIVE" else "🔴" if n['sentiment']=="NEGATIVE" else "🟡"
+            st.markdown(f"""<div class="news-card">
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+              <span style="color:{color};font-weight:600;font-size:0.78rem">{icon} {n['sentiment']}</span>
+              <span style="color:#444;font-size:0.73rem">{n['time']}</span>
             </div>
-            """, unsafe_allow_html=True)
+            <div style="color:#c0cfe0;font-size:0.87rem;line-height:1.5">{n['title']}</div>
+            <a href="{n['link']}" target="_blank" style="color:#00d4ff;font-size:0.73rem;text-decoration:none">📎 Read more →</a>
+            </div>""", unsafe_allow_html=True)
     else:
-        st.info(f"{news_stock} ke liye abhi koi news nahi mili.")
+        st.info(f"{news_sel} ke liye news nahi mili.")
 
-    # Market-wide sentiment
-    st.divider()
-    st.markdown("### 🌐 Market Sentiment Overview")
-    if st.button("🔄 Scan All Stocks Sentiment"):
-        sentiment_data = []
-        prog = st.progress(0)
-        for i, stk in enumerate(stocks[:15]):
-            items = get_news_sentiment(stk)
-            if items:
-                avg = np.mean([n['score'] for n in items])
-                label = "🟢" if avg > 60 else "🔴" if avg < 40 else "🟡"
-                sentiment_data.append({"Stock": stk, "Sentiment": label, "Score": int(avg)})
-            prog.progress((i+1)/15)
-        if sentiment_data:
-            st.dataframe(pd.DataFrame(sentiment_data).sort_values('Score', ascending=False),
-                        use_container_width=True, hide_index=True)
-
-# ===================== TAB 4: BACKTEST =====================
-with tab4:
+# ========== TAB 7: BACKTEST ==========
+with tab7:
     st.markdown("### 🧪 Backtesting Engine")
-    st.info("Strategy: RSI < 45 + Price > SMA50 + MACD Bullish + Volume Surge | Timeframe: 1 Year")
+    st.info("Strategy: RSI < 45 + Price > SMA50 + MACD Bullish + Volume > 1.3x | 1 Year Data")
 
-    b1, b2 = st.columns(2)
-    with b1:
-        bt_stock = st.selectbox("Stock Select Karo:", stocks, key="bt_sel")
-        bt_sl = st.slider("Backtest Stop Loss %", 1.0, 10.0, 3.0, 0.5)
-        bt_tg = st.slider("Backtest Target %", 2.0, 25.0, 8.0, 0.5)
-
-    with b2:
-        st.markdown("#### Strategy Rules")
+    bt1, bt2 = st.columns(2)
+    with bt1:
+        bt_stk = st.selectbox("Stock:", ACTIVE_STOCKS, key="bt_sel")
+        bt_sl  = st.slider("Stop Loss %",  1.0, 10.0, 3.0, 0.5)
+        bt_tg  = st.slider("Target %",     2.0, 25.0, 8.0, 0.5)
+    with bt2:
+        st.markdown("#### Strategy Logic")
         st.markdown("""
-        - **Entry:** RSI < 45 + Price > SMA50 + MACD Bullish + Vol > 1.3x
-        - **Exit:** Target hit OR Stop Loss OR 20 days timeout
-        - **Data:** 1 Year historical
-        - **Model:** Rule-based (reproducible)
+        - **Entry:** RSI<45 + Price>SMA50 + MACD cross + Vol 1.3x
+        - **Exit:** Target hit / Stop Loss / 20-day timeout
+        - **Universe:** 1 year historical OHLCV
         """)
 
     if st.button("▶️ Run Backtest", type="primary"):
-        with st.spinner(f"🧪 {bt_stock} backtest chal raha hai..."):
-            result = run_backtest(bt_stock, mode, bt_sl/100, bt_tg/100)
+        with st.spinner("Running backtest..."):
+            try:
+                df_bt = yf.Ticker(bt_stk).history(period="1y")
+                if df_bt is not None and len(df_bt) >= 100:
+                    df_bt = compute_indicators(df_bt, "Swing").dropna()
+                    trades_bt = []
+                    in_t = False; ep = 0; ei = 0
+                    for i in range(50, len(df_bt)):
+                        row = df_bt.iloc[i]
+                        p   = row['Close']
+                        if not in_t:
+                            if (row['RSI']<45 and p>row['SMA_50'] and
+                                row['MACD']>row['MacdSig'] and row['Volume']>row['Vol_SMA']*1.3):
+                                in_t=True; ep=p; ei=i
+                        else:
+                            pct = (p-ep)/ep; days = i-ei
+                            if pct >= bt_tg/100:
+                                trades_bt.append({'type':'WIN','pnl':pct,'days':days}); in_t=False
+                            elif pct <= -bt_sl/100:
+                                trades_bt.append({'type':'LOSS','pnl':pct,'days':days}); in_t=False
+                            elif days >= 20:
+                                trades_bt.append({'type':'TIMEOUT','pnl':pct,'days':days}); in_t=False
 
-        if result:
-            r1, r2, r3, r4 = st.columns(4)
-            r1.metric("Total Trades", result['total_trades'])
-            r2.metric("Win Rate", f"{result['win_rate']:.1f}%",
-                     delta=f"{result['wins']}W / {result['losses']}L")
-            r3.metric("Total P&L", f"{result['total_pnl_pct']:+.1f}%")
-            r4.metric("Avg Hold Days", f"{result['avg_days']:.0f}")
+                    if trades_bt:
+                        total = len(trades_bt)
+                        wins  = len([t for t in trades_bt if t['type']=='WIN'])
+                        losses= len([t for t in trades_bt if t['type']=='LOSS'])
+                        pnls  = [t['pnl']*100 for t in trades_bt]
+                        wr    = wins/total*100
+                        avg_d = np.mean([t['days'] for t in trades_bt])
+                        tot_pnl = sum(pnls)
+                        max_dd  = min(pnls)
 
-            # Trade distribution chart
-            pnls = [t['pnl'] * 100 for t in result['trades']]
-            colors = ['#00ff88' if p >= 0 else '#ff4444' for p in pnls]
-            fig_bt = go.Figure(go.Bar(
-                x=list(range(1, len(pnls)+1)), y=pnls,
-                marker_color=colors, name="Trade P&L %"
-            ))
-            fig_bt.update_layout(
-                template='plotly_dark', paper_bgcolor='#0a0e1a',
-                plot_bgcolor='#0d1520', height=300,
-                title=f"{bt_stock} — Trade-by-Trade P&L",
-                xaxis_title="Trade #", yaxis_title="P&L %",
-                margin=dict(l=10, r=10, t=40, b=10)
-            )
-            fig_bt.add_hline(y=0, line_color='#ffffff44')
-            st.plotly_chart(fig_bt, use_container_width=True)
+                        r1,r2,r3,r4,r5 = st.columns(5)
+                        r1.metric("Trades",   total)
+                        r2.metric("Win Rate", f"{wr:.1f}%", f"{wins}W / {losses}L")
+                        r3.metric("Total P&L",f"{tot_pnl:+.1f}%")
+                        r4.metric("Avg Days", f"{avg_d:.0f}")
+                        r5.metric("Max Loss", f"{max_dd:.1f}%")
 
-            # Cumulative
-            cum_pnl = np.cumsum(pnls)
-            fig_cum = go.Figure(go.Scatter(
-                x=list(range(1, len(cum_pnl)+1)), y=cum_pnl,
-                fill='tozeroy',
-                line=dict(color='#00d4ff', width=2),
-                fillcolor='rgba(0,212,255,0.1)'
-            ))
-            fig_cum.update_layout(
-                template='plotly_dark', paper_bgcolor='#0a0e1a',
-                plot_bgcolor='#0d1520', height=250,
-                title="Cumulative P&L Curve",
-                margin=dict(l=10, r=10, t=40, b=10)
-            )
-            st.plotly_chart(fig_cum, use_container_width=True)
-        else:
-            st.warning("Backtest ke liye enough trades generate nahi hue. Different stock try karo.")
+                        colors_bt = ['#00ff88' if p>=0 else '#ff4444' for p in pnls]
+                        fig_bt = go.Figure(go.Bar(
+                            x=list(range(1,len(pnls)+1)), y=pnls,
+                            marker_color=colors_bt, name="P&L%"))
+                        fig_bt.add_hline(y=0, line_color='#ffffff44')
+                        fig_bt.update_layout(
+                            template='plotly_dark', paper_bgcolor='#0a0e1a', plot_bgcolor='#0d1520',
+                            height=300, title=f"{bt_stk} — Trade P&L",
+                            margin=dict(l=8,r=8,t=38,b=8), font=dict(color='#7a8fa6',size=11),
+                            xaxis=dict(gridcolor='rgba(255,255,255,0.04)',showgrid=True),
+                            yaxis=dict(gridcolor='rgba(255,255,255,0.04)',showgrid=True),
+                        )
+                        st.plotly_chart(fig_bt, use_container_width=True)
 
-# ===================== TAB 5: PORTFOLIO =====================
-with tab5:
+                        cum = np.cumsum(pnls)
+                        fig_cum = go.Figure(go.Scatter(
+                            x=list(range(1,len(cum)+1)), y=cum,
+                            fill='tozeroy', line=dict(color='#00d4ff',width=2),
+                            fillcolor='rgba(0,212,255,0.08)'))
+                        fig_cum.update_layout(
+                            template='plotly_dark', paper_bgcolor='#0a0e1a', plot_bgcolor='#0d1520',
+                            height=240, title="Cumulative P&L Curve",
+                            margin=dict(l=8,r=8,t=38,b=8), font=dict(color='#7a8fa6',size=11),
+                            xaxis=dict(gridcolor='rgba(255,255,255,0.04)',showgrid=True),
+                            yaxis=dict(gridcolor='rgba(255,255,255,0.04)',showgrid=True),
+                        )
+                        st.plotly_chart(fig_cum, use_container_width=True)
+                    else:
+                        st.warning("Enough trades generate nahi hue. Different stock try karo.")
+                else:
+                    st.warning("Data load nahi hua.")
+            except Exception as e:
+                st.error(f"Backtest error: {e}")
+
+# ========== TAB 8: PORTFOLIO ==========
+with tab8:
     st.markdown("### 💼 Live Portfolio")
 
-    p1, p2, p3 = st.columns(3)
-    p1.metric("Total Value", f"₹{total_val:,.2f}", f"{'+'if pnl>=0 else ''}{pnl:,.2f}")
-    p2.metric("Cash", f"₹{st.session_state.balance:,.2f}")
-    p3.metric("P&L %", f"{pnl/1000:+.2f}%")
+    p1,p2,p3,p4 = st.columns(4)
+    p1.metric("Total Value", f"{CURRENCY}{total_val:,.2f}", f"{'+' if pnl>=0 else ''}{pnl:,.2f}")
+    p2.metric("Cash",        f"{CURRENCY}{st.session_state.balance:,.2f}")
+    p3.metric("P&L %",       f"{pnl/1000:+.2f}%")
+    p4.metric("Positions",   open_pos)
 
     st.divider()
-    active = {s: q for s, q in st.session_state.positions.items() if q > 0}
+    active = {s:q for s,q in st.session_state.positions.items() if q>0}
 
     if active:
-        st.markdown("#### Open Positions")
-        pos_rows = []
-        for s, q in active.items():
-            entry = st.session_state.entry_price.get(s, 0)
-            high  = st.session_state.highest_price.get(s, entry)
-            curr  = entry  # approximate since we don't re-fetch here
-            trail_sl = high * (1 - STOP_LOSS_PCT)
-            tg_price = entry * (1 + TARGET_PCT)
-            pos_rows.append({
-                "Stock": s, "Qty": q,
-                "Entry ₹": f"{entry:.2f}",
-                "Trail SL ₹": f"{trail_sl:.2f}",
-                "Target ₹": f"{tg_price:.2f}",
-                "Value ₹": f"{q*entry:,.0f}"
-            })
-        st.dataframe(pd.DataFrame(pos_rows), use_container_width=True, hide_index=True)
-    else:
-        st.info("Koi open position nahi hai.")
+        st.markdown("#### 📂 Open Positions")
+        rows_p = []
+        for s,q in active.items():
+            entry  = st.session_state.entry_price.get(s,0)
+            high   = st.session_state.highest_price.get(s,entry)
+            trail  = high*(1-STOP_LOSS_PCT)
+            tg_px  = entry*(1+TARGET_PCT)
+            rows_p.append({"Stock":s,"Qty":q,
+                            f"Entry({CURRENCY})":f"{entry:.2f}",
+                            f"TrailSL({CURRENCY})":f"{trail:.2f}",
+                            f"Target({CURRENCY})":f"{tg_px:.2f}",
+                            f"Value({CURRENCY})":f"{q*entry:,.0f}"})
+        st.dataframe(pd.DataFrame(rows_p), use_container_width=True, hide_index=True)
 
     st.divider()
     if st.session_state.trade_log:
         st.markdown("#### 📋 Trade Log")
-        log_df = pd.DataFrame(st.session_state.trade_log)
-        st.dataframe(log_df, use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(st.session_state.trade_log), use_container_width=True, hide_index=True)
+
+    # P&L equity curve
+    if st.session_state.trade_log:
+        sells = [t for t in st.session_state.trade_log if t.get('action')=='SELL']
+        if sells:
+            cumulative = 100000 + np.cumsum([t.get('pnl',0) for t in sells])
+            fig_eq = go.Figure(go.Scatter(
+                y=cumulative, mode='lines',
+                line=dict(color='#00d4ff',width=2),
+                fill='tozeroy', fillcolor='rgba(0,212,255,0.07)'))
+            fig_eq.update_layout(
+                template='plotly_dark', paper_bgcolor='#0a0e1a', plot_bgcolor='#0d1520',
+                height=240, title="Portfolio Equity Curve",
+                margin=dict(l=8,r=8,t=38,b=8), font=dict(color='#7a8fa6',size=11),
+                xaxis=dict(gridcolor='rgba(255,255,255,0.04)',showgrid=True,title="Trades"),
+                yaxis=dict(gridcolor='rgba(255,255,255,0.04)',showgrid=True,title=f"Value ({CURRENCY})"),
+            )
+            st.plotly_chart(fig_eq, use_container_width=True)
 
     st.divider()
     if st.button("🔁 Reset Portfolio", type="secondary"):
-        for k, v in defaults.items():
-            st.session_state[k] = v
-        st.success("✅ Portfolio reset ho gaya!")
-        st.rerun()
+        for k,v in DEFAULTS.items():
+            st.session_state[k] = v if not isinstance(v,list) else []
+        st.success("✅ Portfolio reset!"); st.rerun()
 
 # ================= FOOTER =================
 st.divider()
-st.caption("⚡ QuantEdge AI v2.0 | Built for NSE India Paper Trading | Educational Purpose Only")
-st.caption("⚠️ Real money invest karne se pehle SEBI registered advisor se zaroor salah lein.")
+st.caption("⚡ QuantEdge AI v3.0 | NSE India · Crypto · US Stocks | Paper Trading Only")
+st.caption("⚠️ Educational purpose only. Real money invest karne se pehle SEBI advisor se salah lein.")
