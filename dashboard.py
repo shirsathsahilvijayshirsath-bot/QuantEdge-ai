@@ -18,17 +18,17 @@ def check_password():
     if "password_correct" not in st.session_state:
         st.session_state["password_correct"] = False
 
-    if not st.session_state["password_correct"]: 
-        st.title("🔒 Security Gateway") 
-        st.text_input("Apna Password Darj Karein:", type="password", key="password_input") 
-        
-        if st.session_state.get("password_input") == MY_PASSWORD: 
-            st.session_state["password_correct"] = True 
-            st.rerun() 
-        elif st.session_state.get("password_input"): 
-            st.error("❌ Galat Password! Kripya dobara try karein.") 
-        return False 
-    return True 
+    if not st.session_state["password_correct"]:
+        st.title("🔒 Security Gateway")
+        st.text_input("Apna Password Darj Karein:", type="password", key="password_input")
+
+        if st.session_state.get("password_input") == MY_PASSWORD:
+            st.session_state["password_correct"] = True
+            st.rerun()
+        elif st.session_state.get("password_input"):
+            st.error("❌ Galat Password! Kripya dobara try karein.")
+        return False
+    return True
 
 if not check_password():
     st.stop()
@@ -48,7 +48,7 @@ ist = pytz.timezone('Asia/Kolkata')
 now = datetime.now(ist)
 
 # ================= TELEGRAM =================
-TOKEN = "8629163881:AAHrO4n9KpDNT0tMR1DoRvXeJeZ5VEIWCCA" 
+TOKEN = "8629163881:AAHrO4n9KpDNT0tMR1DoRvXeJeZ5VEIWCCA"
 CHAT_ID = "7602586865"
 
 def send_telegram(msg):
@@ -96,14 +96,14 @@ def get_market_regime(current_mode):
             df = nifty.history(period="5d", interval="5m")
         else:
             df = nifty.history(period="6mo")
-        
+
         if df.empty:
             return True, "Unknown"
-            
+
         df['SMA_50'] = df['Close'].rolling(window=50).mean()
         latest_close = df['Close'].iloc[-1]
         sma_50 = df['SMA_50'].iloc[-1]
-        
+
         is_bullish = latest_close > sma_50
         status = "Bullish (Safe to Buy)" if is_bullish else "Bearish (Defensive Mode)"
         return is_bullish, status
@@ -132,25 +132,25 @@ def advanced_engine(symbol, df, current_mode):
         df = df.copy()
         df['SMA_50'] = df['Close'].rolling(window=50).mean()
         df['Volume_SMA_20'] = df['Volume'].rolling(window=20).mean()
-        
+
         # RSI
         delta = df['Close'].diff()
         gain = delta.clip(lower=0).rolling(14).mean()
         loss = (-delta.clip(upper=0)).rolling(14).mean()
         rs = gain / loss
         df['RSI'] = 100 - (100 / (1 + rs))
-        
+
         # MACD
         exp1 = df['Close'].ewm(span=12, adjust=False).mean()
         exp2 = df['Close'].ewm(span=26, adjust=False).mean()
         df['MACD'] = exp1 - exp2
         df['Signal_Line'] = df['MACD'].ewm(span=9, adjust=False).mean()
-        
+
         # Bollinger
         df['BB_Mid'] = df['Close'].rolling(window=20).mean()
         df['BB_Std'] = df['Close'].rolling(window=20).std()
         df['BB_Low'] = df['BB_Mid'] - (df['BB_Std'] * 2)
-        
+
         if current_mode == "Intraday":
             df['Typical_Price'] = (df['High'] + df['Low'] + df['Close']) / 3
             df['VP'] = df['Typical_Price'] * df['Volume']
@@ -158,7 +158,7 @@ def advanced_engine(symbol, df, current_mode):
             df['Cum_Vol'] = df.groupby('Date')['Volume'].cumsum()
             df['Cum_VP'] = df.groupby('Date')['VP'].cumsum()
             df['VWAP'] = df['Cum_VP'] / df['Cum_Vol']
-        
+
         df = df.dropna()
         if len(df) < 50:
             return "HOLD", 0, 0, "Data Error"
@@ -237,15 +237,15 @@ st.divider()
 leaderboard = []
 cols = st.columns(2)
 
-for stock in stocks:
+for idx, stock in enumerate(stocks):
     df = get_data(stock, mode)
     signal, price, score, status_msg = advanced_engine(stock, df, mode)
-    
+
     leaderboard.append((stock, signal, score, price, status_msg))
 
-    with cols[stocks.index(stock) % 2]:
+    with cols[idx % 2]:
         st.metric(
-            label=f"{stock} (Score: {score})", 
+            label=f"{stock} (Score: {score})",
             value=signal,
             delta=f"₹{price:.2f}" if price > 0 else ""
         )
@@ -279,25 +279,25 @@ with col_sell:
         st.info("No strong SELL signals right now.")
 
 # ================= AUTO TRADE EXECUTION & RISK MANAGEMENT =================
-for stock, signal, _, price, _ in leaderboard:
+for stock, signal, score, price, _ in leaderboard:
     qty = st.session_state.positions.get(stock, 0)
-    
+
     if signal == "BUY" and qty == 0 and price > 0 and can_take_new_trades:
         alloc_pct = 0.15 if score >= 85 and is_bullish else 0.10 if is_bullish else 0.05
         invest = st.session_state.balance * alloc_pct
         q = int(invest / price)
-        
+
         if q > 0:
             st.session_state.positions[stock] = q
             st.session_state.balance -= q * price
             st.session_state.entry_price[stock] = price
             st.session_state.highest_price[stock] = price
-            
+
             calc_tg = price * (1 + TARGET_PCT)
             calc_sl = price * (1 - STOP_LOSS_PCT)
-            
+
             emoji = "🟢 [AGGRESSIVE]" if alloc_pct == 0.15 else "🔵 [STANDARD]" if is_bullish else "🛡️ [DEFENSIVE]"
-            
+
             msg = f"{emoji} {mode} BUY: {stock}\nScore: {score}\nEntry: ₹{price:.2f}\nTarget: ₹{calc_tg:.2f}\nSL: ₹{calc_sl:.2f}"
             send_telegram(msg)
 
@@ -315,26 +315,26 @@ for s, q in list(st.session_state.positions.items()):
         if df2 is None or len(df2) == 0:
             continue
         current_price = float(df2["Close"].iloc[-1])
-        
+
         if s not in st.session_state.highest_price:
             st.session_state.highest_price[s] = st.session_state.entry_price.get(s, current_price)
-        
+
         if current_price > st.session_state.highest_price[s]:
             st.session_state.highest_price[s] = current_price
-            
+
         trailing_sl = st.session_state.highest_price[s] * (1 - STOP_LOSS_PCT)
-        entry = st.session_state.entry_price.get(s)
-        
+        entry = st.session_state.entry_price.get(s, current_price)
+
         if mode == "Intraday" and now.hour == 15 and now.minute >= 20:
             st.session_state.balance += q * current_price
             st.session_state.positions[s] = 0
             send_telegram(f"⏳ EOD EXIT: {s} @ ₹{current_price:.2f}")
-            
+
         elif current_price <= trailing_sl:
             st.session_state.balance += q * current_price
             st.session_state.positions[s] = 0
             send_telegram(f"🛑 Trailing SL Hit: {s} @ ₹{current_price:.2f}")
-            
+
         elif current_price >= entry * (1 + TARGET_PCT):
             st.session_state.balance += q * current_price
             st.session_state.positions[s] = 0
@@ -347,10 +347,47 @@ col1, col2 = st.columns([3, 2])
 with col1:
     st.subheader("💼 Portfolio")
     st.write(f"**Cash Balance:** ₹{st.session_state.balance:,.2f}")
-    
+
     if st.session_state.positions:
-        for s, q in st.session_state.positions.items():
-            if q > 0:
-                entry = st.session_state.entry_price.get(s)
+        active_positions = {s: q for s, q in st.session_state.positions.items() if q > 0}
+        if active_positions:
+            for s, q in active_positions.items():
+                entry = st.session_state.entry_price.get(s, 0)
                 high = st.session_state.highest_price.get(s, entry)
-                current_sl = high * (1 - STOP_LOSS_P
+                current_sl = high * (1 - STOP_LOSS_PCT)
+                tg = entry * (1 + TARGET_PCT)
+                st.write(
+                    f"**{s}** | Qty: {q} | Entry: ₹{entry:.2f} | "
+                    f"High: ₹{high:.2f} | Trail SL: ₹{current_sl:.2f} | Target: ₹{tg:.2f}"
+                )
+        else:
+            st.info("No open positions.")
+    else:
+        st.info("No open positions.")
+
+with col2:
+    st.subheader("📈 P&L Summary")
+
+    total_invested = sum(
+        st.session_state.entry_price.get(s, 0) * q
+        for s, q in st.session_state.positions.items() if q > 0
+    )
+    total_value = st.session_state.balance + total_invested
+    pnl = total_value - 100000.0
+    pnl_pct = (pnl / 100000.0) * 100
+
+    st.metric("Portfolio Value", f"₹{total_value:,.2f}", delta=f"₹{pnl:,.2f} ({pnl_pct:.2f}%)")
+    st.metric("Cash Available", f"₹{st.session_state.balance:,.2f}")
+    st.metric("Open Positions", len([q for q in st.session_state.positions.values() if q > 0]))
+
+    if st.button("🔁 Reset Portfolio"):
+        st.session_state.balance = 100000.0
+        st.session_state.positions = {}
+        st.session_state.entry_price = {}
+        st.session_state.highest_price = {}
+        st.success("Portfolio reset ho gaya! ✅")
+        st.rerun()
+
+# ================= FOOTER =================
+st.divider()
+st.caption("⚠️ Disclaimer: Yeh app sirf educational aur paper trading ke liye hai. Real money invest karne se pehle SEBI registered advisor se salah lein.")
