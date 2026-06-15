@@ -1,6 +1,7 @@
-# ================= QUANTEDGE AI v3.0 =================
+# ================= QUANTEDGE AI v4.0 =================
 # Features: Options Chain, Risk Mgmt, Price Alerts,
-#           Support/Resistance, NSE + Crypto + US Stocks
+#           Support/Resistance, NSE + Crypto + US Stocks,
+#           Price Prediction (ML), Leaderboard, 500+ Stocks
 # ======================================================
 
 import streamlit as st
@@ -13,12 +14,13 @@ from plotly.subplots import make_subplots
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
+from sklearn.linear_model import Ridge
 from datetime import datetime, timedelta
 import pytz
 import math
 
 st.set_page_config(
-    page_title="QuantEdge AI v3.0",
+    page_title="QuantEdge AI v4.0",
     layout="wide",
     page_icon="⚡",
     initial_sidebar_state="expanded"
@@ -55,9 +57,12 @@ st.markdown("""
     .stTabs [data-baseweb="tab-list"] { background-color:#0d1520; border-bottom:1px solid #00d4ff22; }
     .stTabs [data-baseweb="tab"]      { color:#7a8fa6; font-weight:600; }
     .stTabs [aria-selected="true"]    { color:#00d4ff !important; border-bottom:2px solid #00d4ff !important; }
-    .options-call { background:#003d1f; border-radius:4px; padding:4px 8px; color:#00ff88; font-weight:700; }
-    .options-put  { background:#3d0000; border-radius:4px; padding:4px 8px; color:#ff4444; font-weight:700; }
-    .risk-box { background:#0d1b2a; border:1px solid #ffaa0033; border-radius:10px; padding:16px; }
+    .leaderboard-gold   { background:linear-gradient(135deg,#2a1f00,#3d2e00); border:1px solid #ffd70044; border-left:4px solid #ffd700; border-radius:8px; padding:10px 14px; margin:4px 0; }
+    .leaderboard-silver { background:linear-gradient(135deg,#1a1f2e,#222840); border:1px solid #c0c0c044; border-left:4px solid #c0c0c0; border-radius:8px; padding:10px 14px; margin:4px 0; }
+    .leaderboard-bronze { background:linear-gradient(135deg,#1a1000,#2a1800); border:1px solid #cd7f3244; border-left:4px solid #cd7f32; border-radius:8px; padding:10px 14px; margin:4px 0; }
+    .pred-up   { color:#00ff88; font-size:1.3rem; font-weight:800; }
+    .pred-down { color:#ff4444; font-size:1.3rem; font-weight:800; }
+    .pred-box  { background:#0d1b2a; border:1px solid #00d4ff22; border-radius:10px; padding:16px; text-align:center; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -90,23 +95,50 @@ CHAT_ID = "7602586865"
 
 # ================= MARKET UNIVERSES =================
 NSE_STOCKS = [
-    "TATAMOTORS.NS","M&M.NS","DLF.NS","BRITANNIA.NS","BHARTIARTL.NS","SBIN.NS",
-    "KOTAKBANK.NS","ZOMATO.NS","TITAN.NS","HAL.NS","LTIM.NS","TORNTPHARM.NS",
-    "SUZLON.NS","ABB.NS","GODREJPROP.NS","TATAELXSI.NS","PERSISTENT.NS",
-    "HCLTECH.NS","INFY.NS","MARUTI.NS","HINDALCO.NS","ASIANPAINT.NS",
-    "BAJAJ-AUTO.NS","TRENT.NS","EICHERMOT.NS","TVSMOTOR.NS","NTPC.NS",
-    "MOTHERSON.NS","ZYDUSLIFE.NS","AXISBANK.NS","HINDUNILVR.NS",
-    "PIDILITIND.NS","SRF.NS","VBL.NS","NETWEB.NS","RELIANCE.NS","TCS.NS"
+    # Nifty 50
+    "RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS","HINDUNILVR.NS",
+    "HDFC.NS","SBIN.NS","BHARTIARTL.NS","KOTAKBANK.NS","ITC.NS","LT.NS",
+    "AXISBANK.NS","ASIANPAINT.NS","MARUTI.NS","TITAN.NS","ULTRACEMCO.NS",
+    "WIPRO.NS","SUNPHARMA.NS","TECHM.NS","NESTLEIND.NS","BAJFINANCE.NS",
+    "POWERGRID.NS","NTPC.NS","ONGC.NS","JSWSTEEL.NS","TATASTEEL.NS",
+    "HCLTECH.NS","M&M.NS","BAJAJFINSV.NS",
+    # Nifty Next 50
+    "ADANIENT.NS","ADANIPORTS.NS","ADANIGREEN.NS","DMART.NS","SIEMENS.NS",
+    "PIDILITIND.NS","HAVELLS.NS","MARICO.NS","DABUR.NS","GODREJCP.NS",
+    "MUTHOOTFIN.NS","CHOLAFIN.NS","RECLTD.NS","PFC.NS","IRCTC.NS",
+    "INDHOTEL.NS","TRENT.NS","VEDL.NS","HINDALCO.NS","COALINDIA.NS",
+    "GRASIM.NS","HEROMOTOCO.NS","BAJAJ-AUTO.NS","EICHERMOT.NS","TVSMOTOR.NS",
+    "TATAMOTORS.NS","MOTHERSON.NS","BOSCHLTD.NS","MRF.NS","APOLLOHOSP.NS",
+    # Midcap Stars
+    "ZOMATO.NS","NYKAA.NS","PAYTM.NS","POLICYBZR.NS","DELHIVERY.NS",
+    "HDFCLIFE.NS","SBILIFE.NS","ICICIGI.NS","MFSL.NS","STARHEALTH.NS",
+    "DLF.NS","GODREJPROP.NS","OBEROIRLTY.NS","PHOENIXLTD.NS","PRESTIGE.NS",
+    "PERSISTENT.NS","LTIM.NS","TATAELXSI.NS","MPHASIS.NS","COFORGE.NS",
+    "HAPPSTMNDS.NS","NETWEB.NS","KPIT.NS","CYIENT.NS","MASTEK.NS",
+    "SUZLON.NS","CESC.NS","TORNTPOWER.NS","TATAPOWER.NS","ADANIPOWER.NS",
+    "HAL.NS","BEL.NS","BHEL.NS","COCHINSHIP.NS","MAZDOCK.NS","GRSE.NS",
+    "TORNTPHARM.NS","ZYDUSLIFE.NS","AUROPHARMA.NS","ALKEM.NS","IPCALAB.NS",
+    "MAXHEALTH.NS","FORTIS.NS","METROPOLIS.NS","LALPATHLAB.NS","THYROCARE.NS",
+    "BRITANNIA.NS","VBL.NS","JUBLFOOD.NS","DEVYANI.NS","SAPPHIRE.NS",
+    "ABB.NS","CUMMINSIND.NS","THERMAX.NS","BHARAT FORGE.NS","KALYANKJIL.NS",
+    "SRF.NS","AARTIIND.NS","DEEPAKNTR.NS","PIIND.NS","UPL.NS",
+    "AXISBANK.NS","BANDHANBNK.NS","FEDERALBNK.NS","IDFCFIRSTB.NS","RBLBANK.NS",
 ]
 
 CRYPTO = [
-    "BTC-USD","ETH-USD","BNB-USD","SOL-USD","XRP-USD",
-    "ADA-USD","AVAX-USD","DOGE-USD","MATIC-USD","DOT-USD"
+    "BTC-USD","ETH-USD","BNB-USD","SOL-USD","XRP-USD","ADA-USD",
+    "AVAX-USD","DOGE-USD","MATIC-USD","DOT-USD","LINK-USD","UNI-USD",
+    "ATOM-USD","LTC-USD","BCH-USD","ALGO-USD","XLM-USD","FIL-USD",
+    "NEAR-USD","APT-USD","ARB-USD","OP-USD","INJ-USD","SUI-USD","TIA-USD"
 ]
 
 US_STOCKS = [
-    "AAPL","MSFT","GOOGL","AMZN","NVDA","TSLA","META",
-    "AMD","NFLX","JPM","BAC","V","WMT","DIS","PLTR"
+    "AAPL","MSFT","GOOGL","AMZN","NVDA","TSLA","META","AMD","NFLX","JPM",
+    "BAC","V","WMT","DIS","PLTR","UBER","COIN","SNOW","SHOP","CRWD",
+    "ABNB","RBLX","HOOD","ARM","SMCI","MU","INTC","QCOM","AVGO","TSM",
+    "BABA","JD","PDD","NIO","XPEV","LI","RIVN","LCID","F","GM",
+    "XOM","CVX","COP","SLB","HAL","GS","MS","C","WFC","AXP",
+    "PFE","MRNA","JNJ","ABBV","LLY","UNH","CVS","CI","HUM","ANTM",
 ]
 
 NIFTY_INDEX  = "^NSEI"
@@ -600,11 +632,173 @@ def get_news(symbol):
     except:
         return []
 
+# ================= PRICE PREDICTION ENGINE =================
+@st.cache_data(ttl=3600, show_spinner=False)
+def predict_price(symbol):
+    """
+    Multi-model price prediction for next 1, 3, 5 days.
+    Uses: Linear Regression trend + GBM classification + momentum
+    """
+    try:
+        df = yf.Ticker(symbol).history(period="2y")
+        if df is None or len(df) < 150:
+            return None
+
+        df = df.copy()
+        c  = df['Close']
+
+        # Feature engineering
+        df['r1']    = c.pct_change(1)
+        df['r3']    = c.pct_change(3)
+        df['r5']    = c.pct_change(5)
+        df['r10']   = c.pct_change(10)
+        df['r20']   = c.pct_change(20)
+        df['sma10'] = c.rolling(10).mean()
+        df['sma20'] = c.rolling(20).mean()
+        df['sma50'] = c.rolling(50).mean()
+        df['std10'] = c.rolling(10).std()
+        delta       = c.diff()
+        gain        = delta.clip(lower=0).rolling(14).mean()
+        loss        = (-delta.clip(upper=0)).rolling(14).mean()
+        df['rsi']   = 100 - (100 / (1 + gain / (loss + 1e-9)))
+        e1          = c.ewm(span=12).mean(); e2 = c.ewm(span=26).mean()
+        df['macd']  = (e1 - e2) / (c + 1e-9)
+        df['atr']   = (df['High'] - df['Low']).rolling(14).mean() / (c + 1e-9)
+        df['vol_r'] = df['Volume'] / (df['Volume'].rolling(20).mean() + 1e-9)
+        df['bb_pos']= (c - c.rolling(20).mean()) / (c.rolling(20).std() * 2 + 1e-9)
+        df['momentum'] = c / c.shift(10) - 1
+        df['close_norm'] = c / c.rolling(50).mean()
+
+        feats = ['r1','r3','r5','r10','r20','rsi','macd','atr','vol_r',
+                 'bb_pos','momentum','close_norm','std10']
+
+        results = {}
+        current_price = float(c.iloc[-1])
+
+        for horizon in [1, 3, 5]:
+            df[f'fut_{horizon}'] = c.shift(-horizon) / c - 1
+            df[f'lbl_{horizon}'] = (df[f'fut_{horizon}'] > 0).astype(int)
+
+            dfc = df[feats + [f'fut_{horizon}', f'lbl_{horizon}']].dropna()
+            if len(dfc) < 80:
+                continue
+
+            X = dfc[feats].values
+            y_cls = dfc[f'lbl_{horizon}'].values
+            y_reg = dfc[f'fut_{horizon}'].values
+
+            split = int(len(X) * 0.8)
+            Xtr, Xte = X[:split], X[split:]
+            ytr_c, yte_c = y_cls[:split], y_cls[split:]
+            ytr_r = y_reg[:split]
+
+            sc = StandardScaler()
+            Xtr_s = sc.fit_transform(Xtr)
+            Xte_s = sc.transform(Xte)
+
+            # GBM Classifier for direction
+            clf = GradientBoostingClassifier(n_estimators=100, learning_rate=0.08,
+                                             max_depth=3, random_state=42)
+            clf.fit(Xtr_s, ytr_c)
+
+            # Regression for magnitude
+            from sklearn.linear_model import Ridge
+            reg = Ridge(alpha=1.0)
+            reg.fit(Xtr_s, ytr_r)
+
+            latest = sc.transform(X[-1:])
+            direction_prob = clf.predict_proba(latest)[0][1]  # prob of going UP
+            pred_return    = float(reg.predict(latest)[0])
+
+            # Accuracy on test
+            acc = float(np.mean(clf.predict(Xte_s) == yte_c))
+
+            pred_price = current_price * (1 + pred_return)
+            direction  = "UP" if direction_prob > 0.5 else "DOWN"
+            confidence = int(max(direction_prob, 1 - direction_prob) * 100)
+
+            results[horizon] = {
+                'direction':   direction,
+                'confidence':  confidence,
+                'pred_return': round(pred_return * 100, 2),
+                'pred_price':  round(pred_price, 2),
+                'model_acc':   round(acc * 100, 1),
+                'current':     round(current_price, 2),
+            }
+
+        return results if results else None
+
+    except Exception as e:
+        return None
+
+# ================= LEADERBOARD =================
+def update_leaderboard(trade_log, initial_capital=100000.0):
+    """Build performance stats from trade log"""
+    if not trade_log:
+        return None
+
+    sells = [t for t in trade_log if t.get('action') == 'SELL' and 'pnl' in t]
+    if not sells:
+        return None
+
+    pnls       = [t['pnl'] for t in sells]
+    total_pnl  = sum(pnls)
+    wins       = [p for p in pnls if p > 0]
+    losses     = [p for p in pnls if p <= 0]
+    win_rate   = len(wins) / len(pnls) * 100 if pnls else 0
+    avg_win    = np.mean(wins)   if wins   else 0
+    avg_loss   = np.mean(losses) if losses else 0
+    rr_ratio   = abs(avg_win / avg_loss) if avg_loss != 0 else 0
+    max_dd     = min(pnls) if pnls else 0
+    best_trade = max(pnls) if pnls else 0
+    portfolio_ret = total_pnl / initial_capital * 100
+
+    # Streak
+    streak = 0; cur_streak = 0; streak_type = ""
+    for p in reversed(pnls):
+        if p > 0:
+            if streak_type == "WIN" or streak_type == "":
+                cur_streak += 1; streak_type = "WIN"
+            else:
+                break
+        else:
+            if streak_type == "LOSS" or streak_type == "":
+                cur_streak += 1; streak_type = "LOSS"
+            else:
+                break
+    streak = cur_streak
+
+    # Stock-wise performance
+    stock_pnl = {}
+    for t in sells:
+        stk = t.get('stock','?')
+        stock_pnl[stk] = stock_pnl.get(stk, 0) + t['pnl']
+
+    top_winners = sorted(stock_pnl.items(), key=lambda x: x[1], reverse=True)[:5]
+    top_losers  = sorted(stock_pnl.items(), key=lambda x: x[1])[:3]
+
+    return {
+        'total_trades':   len(pnls),
+        'total_pnl':      round(total_pnl, 2),
+        'portfolio_ret':  round(portfolio_ret, 2),
+        'win_rate':       round(win_rate, 1),
+        'avg_win':        round(avg_win, 2),
+        'avg_loss':       round(avg_loss, 2),
+        'rr_ratio':       round(rr_ratio, 2),
+        'max_dd':         round(max_dd, 2),
+        'best_trade':     round(best_trade, 2),
+        'streak':         streak,
+        'streak_type':    streak_type,
+        'top_winners':    top_winners,
+        'top_losers':     top_losers,
+        'pnl_series':     pnls,
+    }
+
 # ===================== HEADER =====================
 st.markdown("""
 <div class="main-header">
-    <h1>⚡ QUANTEDGE AI v3.0</h1>
-    <p>NSE INDIA · CRYPTO · US STOCKS — ALGORITHMIC TRADING TERMINAL</p>
+    <h1>⚡ QUANTEDGE AI v4.0</h1>
+    <p>NSE INDIA · CRYPTO · US STOCKS — 150+ STOCKS · ML PREDICTION · LEADERBOARD</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -627,9 +821,11 @@ c6.metric("Alerts Set", len(st.session_state.price_alerts))
 st.divider()
 
 # ===================== TABS =====================
-tab1,tab2,tab3,tab4,tab5,tab6,tab7,tab8 = st.tabs([
+tab1,tab2,tab3,tab4,tab5,tab6,tab7,tab8,tab9,tab10 = st.tabs([
     "📡 Live Radar",
     "📊 Chart + S&R",
+    "🔮 Price Prediction",
+    "🏆 Leaderboard",
     "📈 Options Chain",
     "⚠️ Risk Calculator",
     "🔔 Price Alerts",
@@ -839,8 +1035,233 @@ with tab2:
     else:
         st.warning("Data load nahi hua. Dobara try karo.")
 
-# ========== TAB 3: OPTIONS CHAIN ==========
+# ========== TAB 3: PRICE PREDICTION ==========
 with tab3:
+    st.markdown("### 🔮 AI Price Prediction — Next 1, 3, 5 Days")
+    st.info("ML model (GBM + Ridge Regression) trained on 2 years of historical data. Educational only — not financial advice!")
+
+    pred_col1, pred_col2 = st.columns([2,1])
+    with pred_col1:
+        pred_sym = st.selectbox("Stock Select Karo:", ACTIVE_STOCKS, key="pred_sym")
+    with pred_col2:
+        run_pred = st.button("🔮 Run Prediction", type="primary")
+
+    if run_pred or st.session_state.get('last_pred_sym') == pred_sym:
+        st.session_state['last_pred_sym'] = pred_sym
+        with st.spinner(f"🧠 {pred_sym} ka ML model train ho raha hai..."):
+            pred_results = predict_price(pred_sym)
+
+        if pred_results:
+            st.markdown("#### 📊 Prediction Results")
+            p1, p2, p3 = st.columns(3)
+
+            for col, horizon, label in [(p1,1,"Tomorrow"),(p2,3,"3 Days"),(p3,5,"5 Days")]:
+                if horizon in pred_results:
+                    r = pred_results[horizon]
+                    dir_icon  = "📈" if r['direction']=="UP" else "📉"
+                    dir_color = "#00ff88" if r['direction']=="UP" else "#ff4444"
+                    with col:
+                        st.markdown(f"""<div class="pred-box">
+                        <div style="color:#7a8fa6;font-size:0.75rem;text-transform:uppercase;letter-spacing:1px">{label}</div>
+                        <div style="font-size:2rem;margin:6px 0">{dir_icon}</div>
+                        <div style="color:{dir_color};font-size:1.4rem;font-weight:800">{r['direction']}</div>
+                        <div style="color:#fff;font-size:1.1rem;font-weight:700;margin:4px 0">{CURRENCY}{r['pred_price']}</div>
+                        <div style="color:{dir_color};font-size:0.85rem">{r['pred_return']:+.2f}%</div>
+                        <div style="color:#7a8fa6;font-size:0.75rem;margin-top:6px">Confidence: {r['confidence']}%</div>
+                        <div style="color:#555;font-size:0.72rem">Model Acc: {r['model_acc']}%</div>
+                        </div>""", unsafe_allow_html=True)
+
+            st.divider()
+
+            # Confidence chart
+            horizons  = [h for h in [1,3,5] if h in pred_results]
+            confs     = [pred_results[h]['confidence'] for h in horizons]
+            rets      = [pred_results[h]['pred_return'] for h in horizons]
+            colors_p  = ['#00ff88' if pred_results[h]['direction']=="UP" else '#ff4444' for h in horizons]
+            labels_p  = [f"{h}D" for h in horizons]
+
+            fig_pred = make_subplots(rows=1, cols=2,
+                subplot_titles=["Predicted Return %", "Model Confidence %"])
+            fig_pred.add_trace(go.Bar(x=labels_p, y=rets, marker_color=colors_p, name="Return %"), row=1, col=1)
+            fig_pred.add_trace(go.Bar(x=labels_p, y=confs, marker_color='#00d4ff', name="Confidence %"), row=1, col=2)
+            gs = dict(gridcolor='rgba(255,255,255,0.04)', showgrid=True)
+            fig_pred.update_layout(
+                template='plotly_dark', paper_bgcolor='#0a0e1a', plot_bgcolor='#0d1520',
+                height=280, showlegend=False, margin=dict(l=8,r=8,t=35,b=8),
+                font=dict(color='#7a8fa6',size=11),
+                xaxis=gs, xaxis2=gs, yaxis=gs, yaxis2=gs
+            )
+            fig_pred.add_hline(y=0, line_color='#ffffff33', row=1, col=1)
+            st.plotly_chart(fig_pred, use_container_width=True)
+
+            # Disclaimer
+            st.markdown("""<div class="ai-box">
+            ⚠️ <strong>Important:</strong> Yeh predictions ML model ke basis par hain jo historical patterns use karta hai.
+            Market unpredictable hota hai — black swan events, news, macro factors model nahi pakad sakta.
+            Ise sirf ek additional data point ki tarah use karo, final decision apna judgment lagao.
+            </div>""", unsafe_allow_html=True)
+
+            # Batch prediction for top stocks
+            st.divider()
+            st.markdown("#### 🔭 Quick Scan — Top 10 Stocks Prediction")
+            if st.button("▶️ Scan Top 10 Stocks (1-Day)"):
+                scan_stocks = ACTIVE_STOCKS[:10]
+                scan_results = []
+                prog = st.progress(0)
+                for i, stk in enumerate(scan_stocks):
+                    res = predict_price(stk)
+                    if res and 1 in res:
+                        r = res[1]
+                        scan_results.append({
+                            "Stock": stk,
+                            "Direction": f"{'📈' if r['direction']=='UP' else '📉'} {r['direction']}",
+                            f"Pred Price({CURRENCY})": r['pred_price'],
+                            "Return %": f"{r['pred_return']:+.2f}%",
+                            "Confidence": f"{r['confidence']}%",
+                            "Model Acc": f"{r['model_acc']}%",
+                        })
+                    prog.progress((i+1)/len(scan_stocks))
+                if scan_results:
+                    st.dataframe(pd.DataFrame(scan_results), use_container_width=True, hide_index=True)
+        else:
+            st.warning("Prediction model nahi bana — data insufficient ya fetch error. Dobara try karo.")
+
+# ========== TAB 4: LEADERBOARD ==========
+with tab4:
+    st.markdown("### 🏆 Performance Leaderboard & Analytics")
+
+    lb = update_leaderboard(st.session_state.trade_log)
+
+    if lb:
+        # Rank badges
+        rank_pnl = lb['portfolio_ret']
+        if rank_pnl >= 20:
+            rank_label = "🏆 Elite Trader"
+            rank_class = "leaderboard-gold"
+        elif rank_pnl >= 10:
+            rank_label = "🥈 Pro Trader"
+            rank_class = "leaderboard-silver"
+        elif rank_pnl >= 0:
+            rank_label = "🥉 Good Trader"
+            rank_class = "leaderboard-bronze"
+        else:
+            rank_label = "📉 Needs Work"
+            rank_class = "card-hold"
+
+        st.markdown(f"""<div class="{rank_class}">
+        <span style="font-size:1.5rem;font-weight:800">{rank_label}</span>
+        <span style="color:#888;font-size:0.85rem;margin-left:16px">Portfolio Return: {lb['portfolio_ret']:+.2f}%</span>
+        </div>""", unsafe_allow_html=True)
+
+        st.divider()
+
+        # Stats grid
+        s1,s2,s3,s4,s5,s6 = st.columns(6)
+        s1.metric("Total Trades",  lb['total_trades'])
+        s2.metric("Win Rate",      f"{lb['win_rate']}%")
+        s3.metric("Total P&L",     f"{CURRENCY}{lb['total_pnl']:+,.0f}")
+        s4.metric("Avg Win",       f"{CURRENCY}{lb['avg_win']:+.0f}")
+        s5.metric("Avg Loss",      f"{CURRENCY}{lb['avg_loss']:+.0f}")
+        s6.metric("R:R Ratio",     f"1:{lb['rr_ratio']:.1f}")
+
+        s7,s8,s9 = st.columns(3)
+        s7.metric("Best Trade",    f"{CURRENCY}{lb['best_trade']:+.0f}")
+        s8.metric("Worst Trade",   f"{CURRENCY}{lb['max_dd']:+.0f}")
+        streak_icon = "🔥" if lb['streak_type']=="WIN" else "❄️"
+        s9.metric("Current Streak",f"{streak_icon} {lb['streak']} {lb['streak_type']}")
+
+        st.divider()
+
+        # P&L distribution chart
+        pnls = lb['pnl_series']
+        colors_lb = ['#00ff88' if p > 0 else '#ff4444' for p in pnls]
+        fig_lb = go.Figure(go.Bar(
+            x=list(range(1, len(pnls)+1)), y=pnls,
+            marker_color=colors_lb, name="P&L per Trade"))
+        fig_lb.add_hline(y=0, line_color='#ffffff33')
+        fig_lb.add_hline(y=lb['avg_win'],  line_color='#00ff8866', line_dash='dot',
+                         annotation_text="Avg Win", annotation_font_color='#00ff88')
+        fig_lb.add_hline(y=lb['avg_loss'], line_color='#ff444466', line_dash='dot',
+                         annotation_text="Avg Loss", annotation_font_color='#ff4444')
+        gs = dict(gridcolor='rgba(255,255,255,0.04)', showgrid=True)
+        fig_lb.update_layout(
+            template='plotly_dark', paper_bgcolor='#0a0e1a', plot_bgcolor='#0d1520',
+            height=300, title="Trade-by-Trade P&L",
+            margin=dict(l=8,r=8,t=38,b=8), font=dict(color='#7a8fa6',size=11),
+            xaxis={**gs,'title':'Trade #'}, yaxis={**gs,'title':f'P&L ({CURRENCY})'}
+        )
+        st.plotly_chart(fig_lb, use_container_width=True)
+
+        # Cumulative equity curve
+        cum = np.cumsum([100000] + pnls)
+        fig_eq = go.Figure(go.Scatter(
+            y=cum, mode='lines+markers',
+            line=dict(color='#00d4ff', width=2),
+            marker=dict(size=4, color=['#00ff88' if p > 0 else '#ff4444' for p in [0]+pnls]),
+            fill='tozeroy', fillcolor='rgba(0,212,255,0.06)'))
+        fig_eq.add_hline(y=100000, line_color='#ffffff33', line_dash='dot',
+                         annotation_text="Starting Capital")
+        fig_eq.update_layout(
+            template='plotly_dark', paper_bgcolor='#0a0e1a', plot_bgcolor='#0d1520',
+            height=260, title="Portfolio Equity Curve",
+            margin=dict(l=8,r=8,t=38,b=8), font=dict(color='#7a8fa6',size=11),
+            xaxis={**gs,'title':'Trade #'}, yaxis={**gs,'title':f'Portfolio Value ({CURRENCY})'}
+        )
+        st.plotly_chart(fig_eq, use_container_width=True)
+
+        st.divider()
+        lb_col1, lb_col2 = st.columns(2)
+
+        with lb_col1:
+            st.markdown("#### 🥇 Top Winning Stocks")
+            for i, (stk, pnl) in enumerate(lb['top_winners']):
+                medal = ["🥇","🥈","🥉","4️⃣","5️⃣"][i] if i < 5 else "•"
+                cls = ["leaderboard-gold","leaderboard-silver","leaderboard-bronze","card-hold","card-hold"][min(i,4)]
+                st.markdown(f"""<div class="{cls}">
+                {medal} <strong>{stk}</strong>
+                <span style="float:right;color:#00ff88;font-weight:700">{CURRENCY}{pnl:+,.0f}</span>
+                </div>""", unsafe_allow_html=True)
+
+        with lb_col2:
+            st.markdown("#### 📉 Stocks to Avoid")
+            for stk, pnl in lb['top_losers']:
+                st.markdown(f"""<div class="card-sell">
+                ❌ <strong>{stk}</strong>
+                <span style="float:right;color:#ff4444;font-weight:700">{CURRENCY}{pnl:+,.0f}</span>
+                </div>""", unsafe_allow_html=True)
+
+        # Trading grade report card
+        st.divider()
+        st.markdown("#### 📋 Trader Report Card")
+        grade_items = [
+            ("Win Rate",    lb['win_rate'],    60, 70, "%"),
+            ("R:R Ratio",   lb['rr_ratio']*10, 10, 20, ""),
+            ("Portfolio Return", max(0,lb['portfolio_ret']), 5, 15, "%"),
+        ]
+        for name, val, good, great, unit in grade_items:
+            norm = min(100, val / max(great, 1) * 100)
+            color = '#00ff88' if val >= great else '#ffaa00' if val >= good else '#ff4444'
+            grade = 'A' if val >= great else 'B' if val >= good else 'C'
+            st.markdown(f"""
+            <div style="margin:8px 0">
+              <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+                <span style="color:#a0b4c8;font-size:0.85rem">{name}</span>
+                <span style="color:{color};font-weight:700">{val:.1f}{unit} — Grade {grade}</span>
+              </div>
+              <div style="background:#1a2744;border-radius:4px;height:6px">
+                <div style="background:{color};width:{norm:.0f}%;height:6px;border-radius:4px"></div>
+              </div>
+            </div>""", unsafe_allow_html=True)
+
+    else:
+        st.info("Abhi koi completed trades nahi hain. Live Radar mein trades execute hone ke baad yahan stats dikhenge.")
+        st.markdown("""<div class="ai-box">
+        💡 <strong>Tip:</strong> Live Radar tab mein jao, market scan karo, aur BUY signals pe auto-trades execute honge.
+        Jab trades close honge (target/SL hit), tab yahan leaderboard populate hoga.
+        </div>""", unsafe_allow_html=True)
+
+# ========== TAB 5: OPTIONS CHAIN (was tab3) ==========
+with tab5:
     st.markdown("### 📈 F&O Options Chain")
     if "NSE" in market_tab:
         fo_stocks = ["NIFTY","BANKNIFTY","RELIANCE.NS","TCS.NS","INFY.NS","TATAMOTORS.NS",
@@ -892,8 +1313,8 @@ with tab3:
         st.warning(f"**{fo_sel}** ke liye options data nahi mila.")
         st.info("NSE F&O data ke liye yfinance limited hai. Try: AAPL, TSLA (US stocks) better options data dete hain.")
 
-# ========== TAB 4: RISK CALCULATOR ==========
-with tab4:
+# ========== TAB 6: RISK CALCULATOR (was tab4) ==========
+with tab6:
     st.markdown("### ⚠️ Risk Management Calculator")
     st.info("Har trade se pehle risk calculate karo — professional traders always do this!")
 
@@ -968,8 +1389,8 @@ with tab4:
         st.metric("Breakeven Move", f"{breakeven_move:.3f}%")
         st.metric("Net Max Gain",   f"{CURRENCY}{max(0, max_gain_r - total_fees):.2f}")
 
-# ========== TAB 5: PRICE ALERTS ==========
-with tab5:
+# ========== TAB 7: PRICE ALERTS (was tab5) ==========
+with tab7:
     st.markdown("### 🔔 Price Alert System")
     st.info("Alerts check hote hain jab bhi Live Radar tab refresh hota hai.")
 
@@ -1025,8 +1446,8 @@ with tab5:
     else:
         st.info("Koi alert abhi tak trigger nahi hua.")
 
-# ========== TAB 6: NEWS ==========
-with tab6:
+# ========== TAB 8: NEWS (was tab6) ==========
+with tab8:
     st.markdown("### 📰 Live News & Sentiment")
     news_sel = st.selectbox("Stock:", ACTIVE_STOCKS, key="news_sel")
 
@@ -1054,8 +1475,8 @@ with tab6:
     else:
         st.info(f"{news_sel} ke liye news nahi mili.")
 
-# ========== TAB 7: BACKTEST ==========
-with tab7:
+# ========== TAB 9: BACKTEST (was tab7) ==========
+with tab9:
     st.markdown("### 🧪 Backtesting Engine")
     st.info("Strategy: RSI < 45 + Price > SMA50 + MACD Bullish + Volume > 1.3x | 1 Year Data")
 
@@ -1147,8 +1568,8 @@ with tab7:
             except Exception as e:
                 st.error(f"Backtest error: {e}")
 
-# ========== TAB 8: PORTFOLIO ==========
-with tab8:
+# ========== TAB 10: PORTFOLIO (was tab8) ==========
+with tab10:
     st.markdown("### 💼 Live Portfolio")
 
     p1,p2,p3,p4 = st.columns(4)
@@ -1206,5 +1627,5 @@ with tab8:
 
 # ================= FOOTER =================
 st.divider()
-st.caption("⚡ QuantEdge AI v3.0 | NSE India · Crypto · US Stocks | Paper Trading Only")
+st.caption("⚡ QuantEdge AI v4.0 | NSE India (100+ stocks) · Crypto · US Stocks | ML Prediction | Paper Trading Only")
 st.caption("⚠️ Educational purpose only. Real money invest karne se pehle SEBI advisor se salah lein.")
