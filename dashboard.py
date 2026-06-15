@@ -548,7 +548,9 @@ def plot_chart(df, symbol, current_mode):
         xaxis=gs, xaxis2=gs, xaxis3=gs, yaxis=gs, yaxis2=gs, yaxis3=gs
     )
     for y_val, color in [(70,'#ff4444'),(30,'#00ff88'),(80,'#ff8800'),(20,'#00ff88')]:
-        fig.add_trace(go.Scatter(x=[df_plot.index[0], df_plot.index[-1]], y=[y_val, y_val], mode="lines", line=dict(color=color, dash="dot", width=0.8), opacity=0.4, showlegend=False), row=3, col=1)
+        fig.add_trace(go.Scatter(x=[d.index[0], d.index[-1]], y=[y_val, y_val],
+            mode="lines", line=dict(color=color, dash="dot", width=0.8),
+            opacity=0.4, showlegend=False), row=3, col=1)
     return fig
 
 # ================= OPTIONS CHAIN =================
