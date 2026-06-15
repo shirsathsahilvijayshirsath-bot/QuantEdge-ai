@@ -1,6 +1,6 @@
-streamlit
-yfinance
-pandas
-requests
+plotly
 scikit-learn
+yfinance
+streamlit
 pytz
+joblib
