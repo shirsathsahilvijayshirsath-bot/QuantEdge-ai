@@ -1,8 +1,9 @@
-# ================= QUANTEDGE AI v4.0 =================
-# Features: Options Chain, Risk Mgmt, Price Alerts,
-#           Support/Resistance, NSE + Crypto + US Stocks,
-#           Price Prediction (ML), Leaderboard, 500+ Stocks
-# ======================================================
+# ================= QUANTEDGE AI v5.0 - AUTONOMOUS AI AGENT =================
+# Features: Fully Autonomous AI Trading Agent (NSE + Crypto + US)
+#           Auto BUY/SELL decisions, Telegram alerts with full reasoning,
+#           Separate Intraday + Swing logic, Weekly Win-Rate Reports,
+#           Fundamental + Technical + Sentiment fusion for Swing trades
+# ==============================================================================
 
 import streamlit as st
 import yfinance as yf
@@ -18,9 +19,16 @@ from sklearn.linear_model import Ridge
 from datetime import datetime, timedelta
 import pytz
 import math
+import time as time_module
+
+try:
+    from streamlit_autorefresh import st_autorefresh
+    AUTOREFRESH_AVAILABLE = True
+except ImportError:
+    AUTOREFRESH_AVAILABLE = False
 
 st.set_page_config(
-    page_title="QuantEdge AI v4.0",
+    page_title="QuantEdge AI v5.0 — Autonomous Agent",
     layout="wide",
     page_icon="⚡",
     initial_sidebar_state="expanded"
@@ -155,54 +163,115 @@ SECTOR_MAP = {
     "Others":  ["ZOMATO.NS","TITAN.NS","SUZLON.NS","HINDALCO.NS","TRENT.NS","SRF.NS","NETWEB.NS","RELIANCE.NS"],
 }
 
-# ================= SESSION STATE =================
+# ================= SESSION STATE — 3 INDEPENDENT AI AGENTS =================
+# Each market (NSE / Crypto / US) gets its own portfolio, positions, and trade history
+# Each trade is tagged with mode (Intraday/Swing) for separate win-rate tracking
+
+def make_agent_state():
+    return {
+        "balance": 100000.0,
+        "positions": {},        # {symbol: qty}
+        "entry_price": {},
+        "highest_price": {},
+        "entry_mode": {},        # {symbol: "Intraday"/"Swing"} - tracks which mode each position was opened in
+        "trade_log": [],         # full history: BUY/SELL with mode tag
+    }
+
 DEFAULTS = {
-    "balance": 100000.0, "positions": {}, "entry_price": {},
-    "highest_price": {}, "trade_log": [], "price_alerts": [],
-    "triggered_alerts": []
+    "agent_nse":    make_agent_state(),
+    "agent_crypto": make_agent_state(),
+    "agent_us":     make_agent_state(),
+    "price_alerts": [],
+    "triggered_alerts": [],
+    "agent_running": True,           # master on/off switch for AI agent
+    "last_scan_time": None,
+    "weekly_reports": [],            # stores generated weekly win-rate snapshots
+    "scan_log": [],                  # rolling log of AI's analysis decisions (for "show reasoning" panel)
 }
+
 for k, v in DEFAULTS.items():
     if k not in st.session_state:
-        st.session_state[k] = v if not isinstance(v, list) else list(v)
+        if isinstance(v, dict):
+            st.session_state[k] = {kk: (list(vv) if isinstance(vv, list) else (dict(vv) if isinstance(vv, dict) else vv))
+                                    for kk, vv in v.items()} if k.startswith("agent_") else dict(v)
+        elif isinstance(v, list):
+            st.session_state[k] = list(v)
+        else:
+            st.session_state[k] = v
 
-# ================= SIDEBAR =================
+AGENT_KEYS = {"NSE": "agent_nse", "Crypto": "agent_crypto", "US": "agent_us"}
+AGENT_CURRENCY = {"NSE": "₹", "Crypto": "$", "US": "$"}
+
+# ================= SIDEBAR — AI AGENT CONTROL PANEL =================
 with st.sidebar:
-    st.markdown("## ⚡ QuantEdge AI v3.0")
+    st.markdown("## ⚡ QuantEdge AI v5.0")
+    st.markdown("##### 🤖 Autonomous Trading Agent")
     st.divider()
 
-    market_tab = st.radio("🌐 Market", ["🇮🇳 NSE India", "🪙 Crypto", "🇺🇸 US Stocks"], index=0)
-    mode = st.radio("📊 Trading Mode", ["Swing", "Intraday"], index=0)
-    st.divider()
-
-    st.markdown("### ⚙️ Risk Settings")
-    if mode == "Intraday":
-        STOP_LOSS_PCT = st.slider("Stop Loss %", 0.5, 3.0, 1.0, 0.1) / 100
-        TARGET_PCT    = st.slider("Target %",    1.0, 5.0, 2.5, 0.1) / 100
+    st.session_state.agent_running = st.toggle("🟢 AI Agent ACTIVE", value=st.session_state.agent_running)
+    if st.session_state.agent_running:
+        st.success("Agent live hai — auto-scanning every 5 min")
     else:
-        STOP_LOSS_PCT = st.slider("Stop Loss %", 1.0, 8.0,  3.0, 0.5) / 100
-        TARGET_PCT    = st.slider("Target %",    3.0, 20.0, 8.0, 0.5) / 100
+        st.warning("Agent paused — manual mode")
+
+    st.divider()
+    st.markdown("### 🌐 Markets AI Manages")
+    manage_nse    = st.checkbox("🇮🇳 NSE India",  value=True)
+    manage_crypto = st.checkbox("🪙 Crypto",       value=True)
+    manage_us     = st.checkbox("🇺🇸 US Stocks",   value=True)
+
+    st.divider()
+    st.markdown("### 📊 Trade Styles AI Runs")
+    run_intraday = st.checkbox("⚡ Intraday", value=True)
+    run_swing    = st.checkbox("📈 Swing",    value=True)
+
+    st.divider()
+    st.markdown("### ⚙️ Risk Settings")
+    ic1, ic2 = st.columns(2)
+    with ic1:
+        st.caption("Intraday")
+        INTRA_SL = st.slider("SL %",  0.5, 3.0, 1.0, 0.1, key="intra_sl") / 100
+        INTRA_TG = st.slider("TG %",  1.0, 5.0, 2.5, 0.1, key="intra_tg") / 100
+    with ic2:
+        st.caption("Swing")
+        SWING_SL = st.slider("SL %",  1.0, 8.0,  3.0, 0.5, key="swing_sl") / 100
+        SWING_TG = st.slider("TG %",  3.0, 20.0, 8.0, 0.5, key="swing_tg") / 100
 
     st.divider()
     telegram_on = st.toggle("📲 Telegram Alerts", value=True)
-    min_score   = st.slider("Min Signal Score", 50, 95, 75)
+    min_score   = st.slider("Min Signal Score (auto-trade)", 50, 95, 75)
+    max_alloc_pct = st.slider("Max % capital per trade", 5, 30, 15)
+
     st.divider()
     st.caption(f"🕒 {now.strftime('%d %b %Y  %H:%M:%S')} IST")
+    if st.session_state.last_scan_time:
+        st.caption(f"🔄 Last scan: {st.session_state.last_scan_time}")
 
-# Active universe
-if "NSE" in market_tab:
-    ACTIVE_STOCKS = NSE_STOCKS
-    CURRENCY = "₹"
-    BENCH = NIFTY_INDEX
-elif "Crypto" in market_tab:
-    ACTIVE_STOCKS = CRYPTO
-    CURRENCY = "$"
-    BENCH = BTC_BENCH
-else:
-    ACTIVE_STOCKS = US_STOCKS
-    CURRENCY = "$"
-    BENCH = SP500_INDEX
+ACTIVE_MARKETS = []
+if manage_nse:    ACTIVE_MARKETS.append("NSE")
+if manage_crypto: ACTIVE_MARKETS.append("Crypto")
+if manage_us:     ACTIVE_MARKETS.append("US")
 
-can_trade = not (mode == "Intraday" and (now.hour > 14 or (now.hour == 14 and now.minute >= 30)))
+ACTIVE_MODES = []
+if run_intraday: ACTIVE_MODES.append("Intraday")
+if run_swing:    ACTIVE_MODES.append("Swing")
+
+MARKET_UNIVERSE = {"NSE": NSE_STOCKS, "Crypto": CRYPTO, "US": US_STOCKS}
+MARKET_BENCH    = {"NSE": NIFTY_INDEX, "Crypto": BTC_BENCH, "US": SP500_INDEX}
+RISK_PARAMS     = {"Intraday": (INTRA_SL, INTRA_TG), "Swing": (SWING_SL, SWING_TG)}
+
+def market_can_trade(market, mode_):
+    """Intraday only during market hours for NSE/US. Crypto trades 24/7."""
+    if mode_ != "Intraday":
+        return True
+    if market == "Crypto":
+        return True
+    if market == "NSE":
+        return not (now.hour > 14 or (now.hour == 14 and now.minute >= 30))
+    if market == "US":
+        # US market hours roughly 19:30-02:00 IST (varies with DST) — keep permissive
+        return True
+    return True
 
 # ================= HELPERS =================
 def send_telegram(msg):
@@ -470,12 +539,39 @@ def advanced_engine(symbol, df, current_mode):
             signals.append(("ML Model", "BULLISH" if ml_conf > 60 else "NEUTRAL",
                             f"{ml_conf}% confidence"))
 
+        # ===== SWING ONLY: fuse Fundamentals + News Sentiment =====
+        fund_data = None
+        sent_score = None
+        if current_mode == "Swing":
+            fund_data = get_fundamentals(symbol)
+            f_score = fund_data.get('fundamental_score', 50)
+            if f_score >= 65:
+                score += 15; signals.append(("Fundamentals", "BULLISH", fund_data.get('summary','Strong fundamentals')[:60]))
+            elif f_score <= 35:
+                score -= 15; signals.append(("Fundamentals", "BEARISH", fund_data.get('summary','Weak fundamentals')[:60]))
+            else:
+                signals.append(("Fundamentals", "NEUTRAL", fund_data.get('summary','Mixed fundamentals')[:60]))
+
+            sent_avg, sent_label, n_articles = news_sentiment_summary(symbol)
+            sent_score = sent_avg
+            if n_articles > 0:
+                if sent_label == "POSITIVE":
+                    score += 10; signals.append(("News Sentiment", "BULLISH", f"{sent_label} ({n_articles} articles)"))
+                elif sent_label == "NEGATIVE":
+                    score -= 10; signals.append(("News Sentiment", "BEARISH", f"{sent_label} ({n_articles} articles)"))
+                else:
+                    signals.append(("News Sentiment", "NEUTRAL", f"{sent_label} ({n_articles} articles)"))
+
         reasons = [s[2] for s in signals if s[1] == "BULLISH"][:3]
         status  = " | ".join(reasons) if reasons else "Watching"
 
-        if score >= 75:
+        # Swing requires a slightly higher bar since more factors are fused in
+        buy_threshold  = 78 if current_mode == "Swing" else 75
+        sell_threshold = -18 if current_mode == "Swing" else -20
+
+        if score >= buy_threshold:
             return "BUY",  price, int(score), status, signals
-        elif score <= -20 or (rsi > 72 and macd < macd_s):
+        elif score <= sell_threshold or (rsi > 72 and macd < macd_s):
             return "SELL", price, int(score), status, signals
         else:
             return "HOLD", price, int(score), status, signals
@@ -495,6 +591,54 @@ def ai_explain(symbol, signal, score, signals, price, currency="₹"):
         return f"**{symbol}** SELL/EXIT signal — Score {score}/100. Bearish: {r}. Profit book karo."
     else:
         return f"**{symbol}** HOLD zone — Score {score}/100. Koi strong setup nahi hai abhi. Wait karo."
+
+def build_buy_telegram(market, mode_, symbol, price, target, sl, score, signals, currency):
+    """Full reasoning BUY alert for Telegram — includes fundamentals if Swing"""
+    bull = [s for s in signals if s[1] == "BULLISH"]
+    bear = [s for s in signals if s[1] == "BEARISH"]
+
+    lines = [
+        f"🟢 *AI AGENT — BUY ORDER*",
+        f"Market: {market} | Mode: {mode_}",
+        f"Stock: *{symbol}*",
+        f"",
+        f"💰 Buy Price: {currency}{price:.2f}",
+        f"🎯 Target: {currency}{target:.2f} ({(target/price-1)*100:+.2f}%)",
+        f"🛑 Stop Loss: {currency}{sl:.2f} ({(sl/price-1)*100:+.2f}%)",
+        f"📊 AI Confidence Score: {score}/100",
+        f"",
+        f"📌 *Why AI bought this:*",
+    ]
+    for s in bull[:5]:
+        lines.append(f"  ✅ {s[0]}: {s[2]}")
+    if bear:
+        lines.append(f"")
+        lines.append(f"⚠️ *Risk factors noted:*")
+        for s in bear[:2]:
+            lines.append(f"  • {s[0]}: {s[2]}")
+    lines.append(f"")
+    lines.append(f"🕒 {now.strftime('%d %b %Y, %H:%M:%S')} IST")
+    return "\n".join(lines)
+
+def build_sell_telegram(market, mode_, symbol, exit_price, entry_price, qty, pnl, reason, currency):
+    """Full reasoning SELL alert for Telegram"""
+    pnl_pct = (exit_price/entry_price - 1) * 100
+    result_icon = "✅ PROFIT" if pnl >= 0 else "❌ LOSS"
+    lines = [
+        f"🔴 *AI AGENT — SELL ORDER*",
+        f"Market: {market} | Mode: {mode_}",
+        f"Stock: *{symbol}*",
+        f"",
+        f"📥 Entry was: {currency}{entry_price:.2f}",
+        f"📤 Exit Price: {currency}{exit_price:.2f}",
+        f"📦 Qty: {qty}",
+        f"",
+        f"{result_icon}: {currency}{pnl:+,.2f} ({pnl_pct:+.2f}%)",
+        f"📌 Reason: {reason}",
+        f"",
+        f"🕒 {now.strftime('%d %b %Y, %H:%M:%S')} IST",
+    ]
+    return "\n".join(lines)
 
 # ================= CANDLESTICK CHART =================
 def plot_chart(df, symbol, current_mode):
@@ -594,6 +738,7 @@ def check_alerts(alerts, current_prices):
     remaining = []
     for alert in alerts:
         sym   = alert['symbol']
+        cur   = AGENT_CURRENCY.get(alert.get('market','NSE'), '₹')
         price = current_prices.get(sym, 0)
         if price == 0:
             remaining.append(alert)
@@ -606,7 +751,7 @@ def check_alerts(alerts, current_prices):
         if hit:
             triggered.append({**alert, 'triggered_price': price,
                                'triggered_at': now.strftime('%H:%M:%S')})
-            send_telegram(f"🔔 ALERT: {sym} {alert['condition']} ₹{alert['target']:.2f}\nCurrent: ₹{price:.2f}")
+            send_telegram(f"🔔 ALERT: {sym} {alert['condition']} {cur}{alert['target']:.2f}\nCurrent: {cur}{price:.2f}")
         else:
             remaining.append(alert)
     return triggered, remaining
@@ -634,7 +779,109 @@ def get_news(symbol):
     except:
         return []
 
-# ================= PRICE PREDICTION ENGINE =================
+def news_sentiment_summary(symbol):
+    """Returns (avg_score 0-100, label, headline_count) for use in Swing AI scoring"""
+    items = get_news(symbol)
+    if not items:
+        return 50, "NEUTRAL", 0
+    avg = np.mean([n['score'] for n in items])
+    label = "POSITIVE" if avg > 58 else "NEGATIVE" if avg < 42 else "NEUTRAL"
+    return avg, label, len(items)
+
+# ================= FUNDAMENTALS (for Swing trades) =================
+@st.cache_data(ttl=21600, show_spinner=False)
+def get_fundamentals(symbol):
+    """
+    Fetch quarterly/fundamental snapshot for Swing analysis.
+    Returns a dict of key ratios + a derived fundamental_score (0-100).
+    Crypto has no fundamentals — returns neutral score.
+    """
+    if "-USD" in symbol:
+        return {
+            "available": False, "fundamental_score": 50,
+            "summary": "Crypto — no traditional fundamentals, sentiment/technicals drive decision."
+        }
+    try:
+        info = yf.Ticker(symbol).info
+        pe        = info.get('trailingPE')
+        forward_pe= info.get('forwardPE')
+        peg       = info.get('pegRatio')
+        profit_m  = info.get('profitMargins')
+        rev_growth= info.get('revenueGrowth')
+        earn_growth = info.get('earningsGrowth')
+        roe       = info.get('returnOnEquity')
+        debt_eq   = info.get('debtToEquity')
+        target_mean = info.get('targetMeanPrice')
+        current_p   = info.get('currentPrice') or info.get('regularMarketPrice')
+        recommendation = info.get('recommendationKey', 'none')
+
+        score = 50
+        notes = []
+
+        if rev_growth is not None:
+            if rev_growth > 0.15:
+                score += 12; notes.append(f"Strong revenue growth ({rev_growth*100:.1f}%)")
+            elif rev_growth > 0.05:
+                score += 6; notes.append(f"Decent revenue growth ({rev_growth*100:.1f}%)")
+            elif rev_growth < 0:
+                score -= 10; notes.append(f"Revenue declining ({rev_growth*100:.1f}%)")
+
+        if earn_growth is not None:
+            if earn_growth > 0.15:
+                score += 10; notes.append(f"Strong earnings growth ({earn_growth*100:.1f}%)")
+            elif earn_growth < 0:
+                score -= 8; notes.append("Earnings declining")
+
+        if profit_m is not None:
+            if profit_m > 0.15:
+                score += 8; notes.append(f"Healthy margins ({profit_m*100:.1f}%)")
+            elif profit_m < 0.03:
+                score -= 5; notes.append("Thin margins")
+
+        if roe is not None:
+            if roe > 0.18:
+                score += 8; notes.append(f"High ROE ({roe*100:.1f}%)")
+            elif roe < 0.05:
+                score -= 5
+
+        if debt_eq is not None:
+            if debt_eq > 150:
+                score -= 8; notes.append("High debt load")
+            elif debt_eq < 50:
+                score += 5; notes.append("Low debt")
+
+        if pe is not None and pe > 0:
+            if pe < 20:
+                score += 6; notes.append(f"Reasonable P/E ({pe:.1f})")
+            elif pe > 60:
+                score -= 6; notes.append(f"Expensive P/E ({pe:.1f})")
+
+        if target_mean and current_p:
+            upside = (target_mean - current_p) / current_p * 100
+            if upside > 10:
+                score += 10; notes.append(f"Analyst target {upside:+.1f}% upside")
+            elif upside < -5:
+                score -= 8; notes.append(f"Analyst target {upside:+.1f}% downside")
+
+        if recommendation in ('buy', 'strong_buy'):
+            score += 8; notes.append(f"Analyst rating: {recommendation}")
+        elif recommendation in ('sell', 'strong_sell'):
+            score -= 10; notes.append(f"Analyst rating: {recommendation}")
+
+        score = max(0, min(100, score))
+
+        return {
+            "available": True,
+            "fundamental_score": score,
+            "pe": pe, "rev_growth": rev_growth, "earn_growth": earn_growth,
+            "profit_margin": profit_m, "roe": roe, "debt_equity": debt_eq,
+            "recommendation": recommendation,
+            "summary": " | ".join(notes[:4]) if notes else "Limited fundamental data available"
+        }
+    except:
+        return {"available": False, "fundamental_score": 50, "summary": "Fundamentals fetch failed"}
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def predict_price(symbol):
     """
@@ -796,185 +1043,340 @@ def update_leaderboard(trade_log, initial_capital=100000.0):
         'pnl_series':     pnls,
     }
 
+# ================= WEEKLY WIN-RATE CALCULATOR =================
+def calc_weekly_winrate(trade_log, mode_filter=None):
+    """Calculate win rate for trades closed in the last 7 days, optionally filtered by mode"""
+    sells = [t for t in trade_log if t.get('action') == 'SELL' and 'pnl' in t]
+    if mode_filter:
+        sells = [t for t in sells if t.get('mode') == mode_filter]
+    if not sells:
+        return None
+
+    cutoff = now - timedelta(days=7)
+    recent = []
+    for t in sells:
+        try:
+            t_time = t.get('full_time')
+            if t_time and t_time >= cutoff:
+                recent.append(t)
+            elif not t_time:
+                recent.append(t)  # fallback: include if no timestamp (older trades)
+        except:
+            recent.append(t)
+
+    if not recent:
+        return {"trades": 0, "win_rate": 0, "wins": 0, "losses": 0, "total_pnl": 0}
+
+    wins   = len([t for t in recent if t['pnl'] > 0])
+    losses = len([t for t in recent if t['pnl'] <= 0])
+    total  = len(recent)
+    total_pnl = sum(t['pnl'] for t in recent)
+    return {
+        "trades": total, "wins": wins, "losses": losses,
+        "win_rate": round(wins/total*100, 1) if total > 0 else 0,
+        "total_pnl": round(total_pnl, 2)
+    }
+
+# ================= CORE AI AGENT — SCAN, DECIDE, EXECUTE =================
+def run_ai_agent_for_market(market, mode_, min_score_threshold, max_alloc, telegram_enabled):
+    """
+    The autonomous brain: scans every stock in the given market+mode universe,
+    runs advanced_engine (technical + fundamental + sentiment fusion for Swing),
+    and automatically opens/closes paper-trade positions with full Telegram reasoning.
+    Returns a list of (symbol, signal, score, price, status, signals) for UI display.
+    """
+    agent_key = AGENT_KEYS[market]
+    agent = st.session_state[agent_key]
+    currency = AGENT_CURRENCY[market]
+    universe = MARKET_UNIVERSE[market]
+    sl_pct, tg_pct = RISK_PARAMS[mode_]
+    can_trade_now = market_can_trade(market, mode_)
+    is_bull, _, _ = get_market_regime(MARKET_BENCH[market], mode_)
+
+    results = []
+    for stk in universe:
+        df_s = get_data(stk, mode_)
+        sig, price, score, status, signals = advanced_engine(stk, df_s, mode_)
+        results.append((stk, sig, score, price, status, signals))
+
+        # log every decision for the "AI reasoning" panel (rolling buffer)
+        st.session_state.scan_log.append({
+            'time': now.strftime('%H:%M:%S'), 'market': market, 'mode': mode_,
+            'stock': stk, 'signal': sig, 'score': score, 'price': price
+        })
+
+        # Position key is tagged by mode so Intraday & Swing positions on the
+        # same symbol don't collide
+        pos_key = f"{stk}__{mode_}"
+        qty = agent['positions'].get(pos_key, 0)
+
+        # ---------- AUTO BUY ----------
+        if sig == "BUY" and qty == 0 and price > 0 and can_trade_now and score >= min_score_threshold:
+            alloc_pct = (max_alloc/100) if (score >= 88 and is_bull) else (max_alloc*0.66/100) if is_bull else (max_alloc*0.33/100)
+            invest = agent['balance'] * alloc_pct
+            q = int(invest / price) if price > 0 else 0
+            if q > 0 and invest <= agent['balance']:
+                agent['positions'][pos_key] = q
+                agent['balance'] -= q * price
+                agent['entry_price'][pos_key] = price
+                agent['highest_price'][pos_key] = price
+                agent['entry_mode'][pos_key] = mode_
+
+                target = price * (1 + tg_pct)
+                stop   = price * (1 - sl_pct)
+
+                agent['trade_log'].append({
+                    'time': now.strftime('%H:%M'), 'full_time': now, 'stock': stk,
+                    'action': 'BUY', 'price': price, 'qty': q, 'score': score,
+                    'mode': mode_, 'market': market
+                })
+
+                if telegram_enabled:
+                    msg = build_buy_telegram(market, mode_, stk, price, target, stop, score, signals, currency)
+                    send_telegram(msg)
+
+        # ---------- AUTO SELL (signal-based exit) ----------
+        elif sig == "SELL" and qty > 0 and price > 0:
+            entry = agent['entry_price'].get(pos_key, price)
+            pnl_t = (price - entry) * qty
+            agent['balance'] += qty * price
+            agent['positions'][pos_key] = 0
+            agent['trade_log'].append({
+                'time': now.strftime('%H:%M'), 'full_time': now, 'stock': stk,
+                'action': 'SELL', 'price': price, 'qty': qty, 'pnl': round(pnl_t, 2),
+                'mode': mode_, 'market': market
+            })
+            agent['entry_price'].pop(pos_key, None)
+            agent['highest_price'].pop(pos_key, None)
+            agent['entry_mode'].pop(pos_key, None)
+
+            if telegram_enabled:
+                msg = build_sell_telegram(market, mode_, stk, price, entry, qty, pnl_t,
+                                          "AI signal reversed — bearish indicators triggered", currency)
+                send_telegram(msg)
+
+    # ---------- TRAILING SL / TARGET / EOD CHECK for open positions in this market+mode ----------
+    for pos_key, q in list(agent['positions'].items()):
+        if q <= 0:
+            continue
+        if not pos_key.endswith(f"__{mode_}"):
+            continue
+        stk = pos_key.replace(f"__{mode_}", "")
+
+        df2 = get_data(stk, mode_)
+        if df2 is None or len(df2) == 0:
+            continue
+        cp = float(df2['Close'].iloc[-1])
+
+        if pos_key not in agent['highest_price']:
+            agent['highest_price'][pos_key] = agent['entry_price'].get(pos_key, cp)
+        if cp > agent['highest_price'][pos_key]:
+            agent['highest_price'][pos_key] = cp
+
+        trail_sl = agent['highest_price'][pos_key] * (1 - sl_pct)
+        entry    = agent['entry_price'].get(pos_key, cp)
+        target_p = entry * (1 + tg_pct)
+
+        exit_reason = None
+        if mode_ == "Intraday" and market in ("NSE",) and now.hour == 15 and now.minute >= 20:
+            exit_reason = "End-of-day square-off (Intraday auto-exit)"
+        elif cp <= trail_sl:
+            exit_reason = f"Trailing Stop Loss hit at {currency}{trail_sl:.2f}"
+        elif cp >= target_p:
+            exit_reason = f"Target achieved at {currency}{target_p:.2f}"
+
+        if exit_reason:
+            pnl_t = (cp - entry) * q
+            agent['balance'] += q * cp
+            agent['positions'][pos_key] = 0
+            agent['trade_log'].append({
+                'time': now.strftime('%H:%M'), 'full_time': now, 'stock': stk,
+                'action': 'SELL', 'price': cp, 'qty': q, 'pnl': round(pnl_t, 2),
+                'mode': mode_, 'market': market
+            })
+            agent['entry_price'].pop(pos_key, None)
+            agent['highest_price'].pop(pos_key, None)
+            agent['entry_mode'].pop(pos_key, None)
+
+            if telegram_enabled:
+                msg = build_sell_telegram(market, mode_, stk, cp, entry, q, pnl_t, exit_reason, currency)
+                send_telegram(msg)
+
+    # keep scan_log bounded
+    if len(st.session_state.scan_log) > 500:
+        st.session_state.scan_log = st.session_state.scan_log[-500:]
+
+    return sorted(results, key=lambda x: x[2], reverse=True)
+
+# ================= AUTO-REFRESH (5 min) =================
+if AUTOREFRESH_AVAILABLE and st.session_state.agent_running:
+    st_autorefresh(interval=5*60*1000, key="agent_autorefresh")
+elif st.session_state.agent_running:
+    st.sidebar.warning("⚠️ Add `streamlit-autorefresh` to requirements.txt for true auto-refresh. Click 'Scan Now' manually meanwhile.")
+
 # ===================== HEADER =====================
 st.markdown("""
 <div class="main-header">
-    <h1>⚡ QUANTEDGE AI v4.0</h1>
-    <p>NSE INDIA · CRYPTO · US STOCKS — 150+ STOCKS · ML PREDICTION · LEADERBOARD</p>
+    <h1>⚡ QUANTEDGE AI v5.0</h1>
+    <p>AUTONOMOUS AI TRADING AGENT — NSE · CRYPTO · US STOCKS — AUTO BUY/SELL · TELEGRAM REASONING</p>
 </div>
 """, unsafe_allow_html=True)
 
-# ===================== TOP BAR =====================
-is_bull, regime_txt, regime_str = get_market_regime(BENCH, mode)
-total_inv = sum(st.session_state.entry_price.get(s,0) * q
-                for s,q in st.session_state.positions.items() if q > 0)
-total_val = st.session_state.balance + total_inv
-pnl       = total_val - 100000.0
-open_pos  = len([q for q in st.session_state.positions.values() if q > 0])
+# ===================== RUN AI AGENTS (auto-scan) =====================
+if st.session_state.agent_running:
+    do_scan = True
+else:
+    do_scan = False
+
+manual_scan = st.button("🔍 Scan Now (manual)", type="secondary") if not st.session_state.agent_running else False
+
+agent_results = {}  # {market: {mode: [results]}}
+
+if do_scan or manual_scan:
+    with st.spinner("🤖 AI Agent scanning markets..."):
+        for mkt in ACTIVE_MARKETS:
+            agent_results[mkt] = {}
+            for md in ACTIVE_MODES:
+                agent_results[mkt][md] = run_ai_agent_for_market(
+                    mkt, md, min_score, max_alloc_pct, telegram_on
+                )
+    st.session_state.last_scan_time = now.strftime('%H:%M:%S')
+
+    # Check price alerts using latest scanned prices across all markets
+    all_current_prices = {}
+    for mkt, modes_dict in agent_results.items():
+        for md, results in modes_dict.items():
+            for stk, sig, sc, pr, msg, sigs in results:
+                if pr > 0:
+                    all_current_prices[stk] = pr
+    triggered, st.session_state.price_alerts = check_alerts(
+        st.session_state.price_alerts, all_current_prices)
+    if triggered:
+        st.session_state.triggered_alerts.extend(triggered)
+
+# ===================== TOP BAR — Combined across 3 agents =====================
+def agent_summary(market):
+    agent = st.session_state[AGENT_KEYS[market]]
+    inv = sum(agent['entry_price'].get(k, 0) * q for k, q in agent['positions'].items() if q > 0)
+    val = agent['balance'] + inv
+    pnl_ = val - 100000.0
+    open_p = len([q for q in agent['positions'].values() if q > 0])
+    return val, pnl_, open_p, agent['balance']
+
+nse_val, nse_pnl, nse_pos, nse_cash = agent_summary("NSE")
+crypto_val, crypto_pnl, crypto_pos, crypto_cash = agent_summary("Crypto")
+us_val, us_pnl, us_pos, us_cash = agent_summary("US")
 
 c1,c2,c3,c4,c5,c6 = st.columns(6)
-c1.metric("Market",     f"{'🟢' if is_bull else '🔴'} {'Bull' if is_bull else 'Bear'}", regime_txt.split('(')[0].strip())
-c2.metric("Portfolio",  f"{CURRENCY}{total_val:,.0f}", f"{'+' if pnl>=0 else ''}{pnl:,.0f}")
-c3.metric("Cash",       f"{CURRENCY}{st.session_state.balance:,.0f}")
-c4.metric("Positions",  open_pos)
-c5.metric("P&L %",      f"{pnl/1000:+.2f}%")
-c6.metric("Alerts Set", len(st.session_state.price_alerts))
+c1.metric("🇮🇳 NSE Portfolio",    f"₹{nse_val:,.0f}",    f"{'+' if nse_pnl>=0 else ''}{nse_pnl:,.0f}")
+c2.metric("🪙 Crypto Portfolio",  f"${crypto_val:,.0f}",  f"{'+' if crypto_pnl>=0 else ''}{crypto_pnl:,.0f}")
+c3.metric("🇺🇸 US Portfolio",     f"${us_val:,.0f}",      f"{'+' if us_pnl>=0 else ''}{us_pnl:,.0f}")
+c4.metric("Open Positions",  nse_pos + crypto_pos + us_pos)
+c5.metric("Alerts Set",      len(st.session_state.price_alerts))
+c6.metric("AI Status",       "🟢 LIVE" if st.session_state.agent_running else "⏸️ PAUSED")
 
 st.divider()
 
 # ===================== TABS =====================
-tab1,tab2,tab3,tab4,tab5,tab6,tab7,tab8,tab9,tab10 = st.tabs([
-    "📡 Live Radar",
+tab1,tab2,tab3,tab4,tab5,tab6,tab7,tab8,tab9,tab10,tab11 = st.tabs([
+    "🤖 AI Agent Radar",
     "📊 Chart + S&R",
     "🔮 Price Prediction",
-    "🏆 Leaderboard",
+    "🏆 Win-Rate & Leaderboard",
     "📈 Options Chain",
     "⚠️ Risk Calculator",
     "🔔 Price Alerts",
     "📰 News",
     "🧪 Backtest",
-    "💼 Portfolio"
+    "💼 Portfolio (3 Agents)",
+    "🧠 AI Reasoning Log"
 ])
 
-# ========== TAB 1: RADAR ==========
+# ========== TAB 1: AI AGENT RADAR (per market, per mode) ==========
 with tab1:
-    col_r1, col_r2 = st.columns([3,1])
-    with col_r1:
-        st.markdown(f"### 📡 Live Radar — {market_tab}")
-    with col_r2:
-        if st.button("🔄 Refresh", type="primary"):
-            st.cache_data.clear(); st.rerun()
+    st.markdown("### 🤖 AI Agent — Live Decisions Across All Markets")
 
-    leaderboard = []
-    current_prices = {}
+    if not agent_results:
+        st.info("Agent abhi scan nahi hua. Toggle 'AI Agent ACTIVE' on karo sidebar mein, ya 'Scan Now' click karo.")
+    else:
+        for mkt in ACTIVE_MARKETS:
+            currency_m = AGENT_CURRENCY[mkt]
+            mkt_icon = {"NSE":"🇮🇳","Crypto":"🪙","US":"🇺🇸"}[mkt]
+            st.markdown(f"## {mkt_icon} {mkt} Market")
 
-    with st.spinner("Scanning market..."):
-        for stk in ACTIVE_STOCKS:
-            df_s = get_data(stk, mode)
-            sig, price, score, status, sigs = advanced_engine(stk, df_s, mode)
-            leaderboard.append((stk, sig, score, price, status, sigs))
-            current_prices[stk] = price
+            for md in ACTIVE_MODES:
+                results = agent_results.get(mkt, {}).get(md, [])
+                if not results:
+                    continue
+                st.markdown(f"#### {'⚡' if md=='Intraday' else '📈'} {md}")
 
-    leaderboard.sort(key=lambda x: x[2], reverse=True)
+                buys  = [r for r in results if r[1] == "BUY"]
+                sells = [r for r in results if r[1] == "SELL"]
 
-    # Check price alerts
-    triggered, st.session_state.price_alerts = check_alerts(
-        st.session_state.price_alerts, current_prices)
-    if triggered:
-        st.session_state.triggered_alerts.extend(triggered)
-        for t in triggered:
-            st.warning(f"🔔 ALERT TRIGGERED: **{t['symbol']}** {t['condition']} {CURRENCY}{t['target']:.2f} — Now: {CURRENCY}{t['triggered_price']:.2f}")
+                cb, cs = st.columns(2)
+                with cb:
+                    st.markdown(f"**🟢 BUY Signals ({len(buys)})**")
+                    if buys:
+                        for stk,sig,sc,pr,msg,sigs in buys[:5]:
+                            expl = ai_explain(stk, sig, sc, sigs, pr, currency_m)
+                            bw = min(100, max(0, sc))
+                            st.markdown(f"""<div class="card-buy">
+                            <div style="display:flex;justify-content:space-between">
+                              <span style="color:#00ff88;font-weight:700">{stk}</span>
+                              <span style="color:#00ff88;font-weight:800">{currency_m}{pr:.2f}</span>
+                            </div>
+                            <div style="color:#aaa;font-size:0.76rem;margin:3px 0">{msg[:65]}</div>
+                            <div style="background:#003d1f;border-radius:3px;height:5px;margin:5px 0">
+                              <div style="background:#00ff88;width:{bw}%;height:5px;border-radius:3px"></div>
+                            </div>
+                            <div style="color:#00ff88;font-size:0.72rem">Score: {sc}/100</div>
+                            <div class="ai-box" style="margin-top:6px;font-size:0.78rem">🤖 {expl}</div>
+                            </div>""", unsafe_allow_html=True)
+                    else:
+                        st.caption("No BUY signals abhi.")
 
-    # Auto trade
-    for stk, sig, score, price, _, sigs in leaderboard:
-        qty = st.session_state.positions.get(stk, 0)
-        if sig == "BUY" and qty == 0 and price > 0 and can_trade and score >= min_score:
-            alloc = 0.15 if score >= 85 and is_bull else 0.10 if is_bull else 0.05
-            invest = st.session_state.balance * alloc
-            q = int(invest / price)
-            if q > 0 and invest <= st.session_state.balance:
-                st.session_state.positions[stk] = q
-                st.session_state.balance -= q * price
-                st.session_state.entry_price[stk]   = price
-                st.session_state.highest_price[stk]  = price
-                st.session_state.trade_log.append({'time': now.strftime('%H:%M'), 'stock': stk,
-                    'action':'BUY','price':price,'qty':q,'score':score})
-                tg = price*(1+TARGET_PCT); sl = price*(1-STOP_LOSS_PCT)
-                send_telegram(f"🟢 BUY {stk}\nScore:{score} Entry:{CURRENCY}{price:.2f}\nTG:{CURRENCY}{tg:.2f} SL:{CURRENCY}{sl:.2f}")
+                with cs:
+                    st.markdown(f"**🔴 SELL Signals ({len(sells)})**")
+                    if sells:
+                        for stk,sig,sc,pr,msg,sigs in sells[:5]:
+                            expl = ai_explain(stk, sig, sc, sigs, pr, currency_m)
+                            st.markdown(f"""<div class="card-sell">
+                            <div style="display:flex;justify-content:space-between">
+                              <span style="color:#ff4444;font-weight:700">{stk}</span>
+                              <span style="color:#ff4444;font-weight:800">{currency_m}{pr:.2f}</span>
+                            </div>
+                            <div style="color:#aaa;font-size:0.76rem;margin:3px 0">{msg[:65]}</div>
+                            <div class="ai-box" style="margin-top:6px;font-size:0.78rem">🤖 {expl}</div>
+                            </div>""", unsafe_allow_html=True)
+                    else:
+                        st.caption("No SELL signals abhi.")
 
-        elif sig == "SELL" and qty > 0 and price > 0:
-            pnl_t = (price - st.session_state.entry_price.get(stk, price)) * qty
-            st.session_state.balance += qty * price
-            st.session_state.positions[stk] = 0
-            st.session_state.trade_log.append({'time':now.strftime('%H:%M'),'stock':stk,
-                'action':'SELL','price':price,'qty':qty,'pnl':round(pnl_t,2)})
-            st.session_state.entry_price.pop(stk,None)
-            st.session_state.highest_price.pop(stk,None)
-            send_telegram(f"🔴 SELL {stk} @ {CURRENCY}{price:.2f} P&L:{CURRENCY}{pnl_t:+.0f}")
-
-    # Trailing SL
-    for s, q in list(st.session_state.positions.items()):
-        if q > 0:
-            df2 = get_data(s, mode)
-            if df2 is None or len(df2) == 0: continue
-            cp = float(df2['Close'].iloc[-1])
-            if s not in st.session_state.highest_price:
-                st.session_state.highest_price[s] = st.session_state.entry_price.get(s, cp)
-            if cp > st.session_state.highest_price[s]:
-                st.session_state.highest_price[s] = cp
-            trail = st.session_state.highest_price[s] * (1 - STOP_LOSS_PCT)
-            entry = st.session_state.entry_price.get(s, cp)
-            if mode == "Intraday" and now.hour == 15 and now.minute >= 20:
-                st.session_state.balance += q*cp; st.session_state.positions[s]=0
-                send_telegram(f"⏳ EOD EXIT {s} @ {CURRENCY}{cp:.2f}")
-            elif cp <= trail:
-                st.session_state.balance += q*cp; st.session_state.positions[s]=0
-                send_telegram(f"🛑 Trail SL {s} @ {CURRENCY}{cp:.2f}")
-            elif cp >= entry*(1+TARGET_PCT):
-                st.session_state.balance += q*cp; st.session_state.positions[s]=0
-                send_telegram(f"🎯 Target Hit {s} @ {CURRENCY}{cp:.2f}")
-
-    # Display
-    cb, cs = st.columns(2)
-    with cb:
-        st.markdown("### 🟢 BUY Signals")
-        buys = [x for x in leaderboard if x[1]=="BUY"]
-        if buys:
-            for stk,sig,sc,pr,msg,sigs in buys[:8]:
-                expl = ai_explain(stk,sig,sc,sigs,pr,CURRENCY)
-                bw = min(100,max(0,sc))
-                st.markdown(f"""<div class="card-buy">
-                <div style="display:flex;justify-content:space-between">
-                  <span style="color:#00ff88;font-weight:700">{stk}</span>
-                  <span style="color:#00ff88;font-weight:800">{CURRENCY}{pr:.2f}</span>
-                </div>
-                <div style="color:#aaa;font-size:0.77rem;margin:3px 0">{msg[:60]}</div>
-                <div style="background:#003d1f;border-radius:3px;height:5px;margin:5px 0">
-                  <div style="background:#00ff88;width:{bw}%;height:5px;border-radius:3px"></div>
-                </div>
-                <div style="color:#00ff88;font-size:0.73rem">Score: {sc}/100</div>
-                <div class="ai-box" style="margin-top:7px">🤖 {expl}</div>
-                </div>""", unsafe_allow_html=True)
-        else:
-            st.info("No BUY signals right now.")
-
-    with cs:
-        st.markdown("### 🔴 SELL Signals")
-        sells = [x for x in leaderboard if x[1]=="SELL"]
-        if sells:
-            for stk,sig,sc,pr,msg,sigs in sells[:6]:
-                expl = ai_explain(stk,sig,sc,sigs,pr,CURRENCY)
-                st.markdown(f"""<div class="card-sell">
-                <div style="display:flex;justify-content:space-between">
-                  <span style="color:#ff4444;font-weight:700">{stk}</span>
-                  <span style="color:#ff4444;font-weight:800">{CURRENCY}{pr:.2f}</span>
-                </div>
-                <div style="color:#aaa;font-size:0.77rem;margin:3px 0">{msg[:60]}</div>
-                <div class="ai-box" style="margin-top:7px">🤖 {expl}</div>
-                </div>""", unsafe_allow_html=True)
-        else:
-            st.info("No SELL signals.")
-
-    st.divider()
-    st.markdown("### 📋 Full Radar Table")
-    rows = []
-    for stk,sig,sc,pr,msg,_ in leaderboard:
-        ico = "🟢" if sig=="BUY" else "🔴" if sig=="SELL" else "⚪"
-        rows.append({"Stock":stk,"Signal":f"{ico} {sig}","Score":sc,
-                     f"Price({CURRENCY})":f"{pr:.2f}" if pr>0 else "-","Analysis":msg[:55]})
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True,
-        column_config={"Score": st.column_config.ProgressColumn("Score",min_value=0,max_value=100)})
+                with st.expander(f"📋 Full {md} scan table — {mkt}"):
+                    rows = []
+                    for stk,sig,sc,pr,msg,_ in results:
+                        ico = "🟢" if sig=="BUY" else "🔴" if sig=="SELL" else "⚪"
+                        rows.append({"Stock":stk,"Signal":f"{ico} {sig}","Score":sc,
+                                     f"Price({currency_m})":f"{pr:.2f}" if pr>0 else "-","Analysis":msg[:55]})
+                    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True,
+                        column_config={"Score": st.column_config.ProgressColumn("Score",min_value=0,max_value=100)})
+            st.divider()
 
 # ========== TAB 2: CHART + S&R ==========
 with tab2:
     st.markdown("### 📊 Advanced Chart + Support & Resistance")
-    all_stocks = ACTIVE_STOCKS
-    sel = st.selectbox("Stock:", all_stocks, key="chart_sel")
-    df_c = get_data(sel, mode)
+    cm1, cm2 = st.columns(2)
+    with cm1:
+        chart_market = st.selectbox("Market:", ACTIVE_MARKETS if ACTIVE_MARKETS else ["NSE"], key="chart_mkt")
+    with cm2:
+        chart_mode = st.selectbox("Mode:", ACTIVE_MODES if ACTIVE_MODES else ["Swing"], key="chart_mode")
+
+    CURRENCY = AGENT_CURRENCY[chart_market]
+    sel = st.selectbox("Stock:", MARKET_UNIVERSE[chart_market], key="chart_sel")
+    df_c = get_data(sel, chart_mode)
 
     if df_c is not None and len(df_c) >= 50:
-        df_c  = compute_indicators(df_c, mode)
-        sig,pr,sc,msg,sigs = advanced_engine(sel, df_c, mode)
+        df_c  = compute_indicators(df_c, chart_mode)
+        sig,pr,sc,msg,sigs = advanced_engine(sel, df_c, chart_mode)
         sr    = get_sr_levels(df_c)
 
         # Metrics row
@@ -990,7 +1392,7 @@ with tab2:
         ch_col, sr_col = st.columns([3,1])
 
         with ch_col:
-            fig = plot_chart(df_c, sel, mode)
+            fig = plot_chart(df_c, sel, chart_mode)
             # Add S&R lines using shapes (compatible with all plotly versions)
             if sr:
                 shapes = []
@@ -1054,11 +1456,15 @@ with tab3:
     st.markdown("### 🔮 AI Price Prediction — Next 1, 3, 5 Days")
     st.info("ML model (GBM + Ridge Regression) trained on 2 years of historical data. Educational only — not financial advice!")
 
-    pred_col1, pred_col2 = st.columns([2,1])
+    pred_col0, pred_col1, pred_col2 = st.columns([1,2,1])
+    with pred_col0:
+        pred_market = st.selectbox("Market:", ACTIVE_MARKETS if ACTIVE_MARKETS else ["NSE"], key="pred_mkt")
     with pred_col1:
-        pred_sym = st.selectbox("Stock Select Karo:", ACTIVE_STOCKS, key="pred_sym")
+        pred_sym = st.selectbox("Stock Select Karo:", MARKET_UNIVERSE[pred_market], key="pred_sym")
     with pred_col2:
         run_pred = st.button("🔮 Run Prediction", type="primary")
+
+    PRED_CURRENCY = AGENT_CURRENCY[pred_market]
 
     if run_pred or st.session_state.get('last_pred_sym') == pred_sym:
         st.session_state['last_pred_sym'] = pred_sym
@@ -1079,7 +1485,7 @@ with tab3:
                         <div style="color:#7a8fa6;font-size:0.75rem;text-transform:uppercase;letter-spacing:1px">{label}</div>
                         <div style="font-size:2rem;margin:6px 0">{dir_icon}</div>
                         <div style="color:{dir_color};font-size:1.4rem;font-weight:800">{r['direction']}</div>
-                        <div style="color:#fff;font-size:1.1rem;font-weight:700;margin:4px 0">{CURRENCY}{r['pred_price']}</div>
+                        <div style="color:#fff;font-size:1.1rem;font-weight:700;margin:4px 0">{PRED_CURRENCY}{r['pred_price']}</div>
                         <div style="color:{dir_color};font-size:0.85rem">{r['pred_return']:+.2f}%</div>
                         <div style="color:#7a8fa6;font-size:0.75rem;margin-top:6px">Confidence: {r['confidence']}%</div>
                         <div style="color:#555;font-size:0.72rem">Model Acc: {r['model_acc']}%</div>
@@ -1119,7 +1525,7 @@ with tab3:
             st.divider()
             st.markdown("#### 🔭 Quick Scan — Top 10 Stocks Prediction")
             if st.button("▶️ Scan Top 10 Stocks (1-Day)"):
-                scan_stocks = ACTIVE_STOCKS[:10]
+                scan_stocks = MARKET_UNIVERSE[pred_market][:10]
                 scan_results = []
                 prog = st.progress(0)
                 for i, stk in enumerate(scan_stocks):
@@ -1129,7 +1535,7 @@ with tab3:
                         scan_results.append({
                             "Stock": stk,
                             "Direction": f"{'📈' if r['direction']=='UP' else '📉'} {r['direction']}",
-                            f"Pred Price({CURRENCY})": r['pred_price'],
+                            f"Pred Price({PRED_CURRENCY})": r['pred_price'],
                             "Return %": f"{r['pred_return']:+.2f}%",
                             "Confidence": f"{r['confidence']}%",
                             "Model Acc": f"{r['model_acc']}%",
@@ -1140,53 +1546,72 @@ with tab3:
         else:
             st.warning("Prediction model nahi bana — data insufficient ya fetch error. Dobara try karo.")
 
-# ========== TAB 4: LEADERBOARD ==========
+# ========== TAB 4: LEADERBOARD & WEEKLY WIN-RATE ==========
 with tab4:
-    st.markdown("### 🏆 Performance Leaderboard & Analytics")
+    st.markdown("### 🏆 AI Agent Performance — Win-Rate & Leaderboard")
 
-    lb = update_leaderboard(st.session_state.trade_log)
+    # ---------- Weekly win-rate summary across all markets/modes ----------
+    st.markdown("#### 📅 This Week's AI Performance (Intraday vs Swing)")
+    wk_cols = st.columns(len(ACTIVE_MARKETS) if ACTIVE_MARKETS else 1)
+    for idx, mkt in enumerate(ACTIVE_MARKETS):
+        agent = st.session_state[AGENT_KEYS[mkt]]
+        cur = AGENT_CURRENCY[mkt]
+        with wk_cols[idx]:
+            st.markdown(f"**{ {'NSE':'🇮🇳','Crypto':'🪙','US':'🇺🇸'}[mkt] } {mkt}**")
+            for md in ACTIVE_MODES:
+                wr = calc_weekly_winrate(agent['trade_log'], mode_filter=md)
+                if wr and wr['trades'] > 0:
+                    color = '#00ff88' if wr['win_rate'] >= 55 else '#ffaa00' if wr['win_rate'] >= 40 else '#ff4444'
+                    icon = "⚡" if md == "Intraday" else "📈"
+                    st.markdown(f"""<div class="card-info">
+                    <div style="font-size:0.78rem;color:#7a8fa6">{icon} {md}</div>
+                    <div style="font-size:1.3rem;font-weight:800;color:{color}">{wr['win_rate']}%</div>
+                    <div style="font-size:0.72rem;color:#888">{wr['wins']}W / {wr['losses']}L of {wr['trades']} trades</div>
+                    <div style="font-size:0.72rem;color:{'#00ff88' if wr['total_pnl']>=0 else '#ff4444'}">{cur}{wr['total_pnl']:+,.0f} this week</div>
+                    </div>""", unsafe_allow_html=True)
+                else:
+                    st.caption(f"{md}: No trades this week yet")
+
+    st.divider()
+
+    # ---------- Detailed per-market leaderboard ----------
+    lb_market = st.selectbox("📊 Detailed Analytics for Market:", ACTIVE_MARKETS if ACTIVE_MARKETS else ["NSE"], key="lb_market")
+    LB_CURRENCY = AGENT_CURRENCY[lb_market]
+    lb_agent = st.session_state[AGENT_KEYS[lb_market]]
+    lb = update_leaderboard(lb_agent['trade_log'])
 
     if lb:
-        # Rank badges
         rank_pnl = lb['portfolio_ret']
         if rank_pnl >= 20:
-            rank_label = "🏆 Elite Trader"
-            rank_class = "leaderboard-gold"
+            rank_label, rank_class = "🏆 Elite Trader", "leaderboard-gold"
         elif rank_pnl >= 10:
-            rank_label = "🥈 Pro Trader"
-            rank_class = "leaderboard-silver"
+            rank_label, rank_class = "🥈 Pro Trader", "leaderboard-silver"
         elif rank_pnl >= 0:
-            rank_label = "🥉 Good Trader"
-            rank_class = "leaderboard-bronze"
+            rank_label, rank_class = "🥉 Good Trader", "leaderboard-bronze"
         else:
-            rank_label = "📉 Needs Work"
-            rank_class = "card-hold"
+            rank_label, rank_class = "📉 Needs Work", "card-hold"
 
         st.markdown(f"""<div class="{rank_class}">
         <span style="font-size:1.5rem;font-weight:800">{rank_label}</span>
-        <span style="color:#888;font-size:0.85rem;margin-left:16px">Portfolio Return: {lb['portfolio_ret']:+.2f}%</span>
+        <span style="color:#888;font-size:0.85rem;margin-left:16px">{lb_market} Portfolio Return: {lb['portfolio_ret']:+.2f}%</span>
         </div>""", unsafe_allow_html=True)
 
         st.divider()
-
-        # Stats grid
         s1,s2,s3,s4,s5,s6 = st.columns(6)
         s1.metric("Total Trades",  lb['total_trades'])
         s2.metric("Win Rate",      f"{lb['win_rate']}%")
-        s3.metric("Total P&L",     f"{CURRENCY}{lb['total_pnl']:+,.0f}")
-        s4.metric("Avg Win",       f"{CURRENCY}{lb['avg_win']:+.0f}")
-        s5.metric("Avg Loss",      f"{CURRENCY}{lb['avg_loss']:+.0f}")
+        s3.metric("Total P&L",     f"{LB_CURRENCY}{lb['total_pnl']:+,.0f}")
+        s4.metric("Avg Win",       f"{LB_CURRENCY}{lb['avg_win']:+.0f}")
+        s5.metric("Avg Loss",      f"{LB_CURRENCY}{lb['avg_loss']:+.0f}")
         s6.metric("R:R Ratio",     f"1:{lb['rr_ratio']:.1f}")
 
         s7,s8,s9 = st.columns(3)
-        s7.metric("Best Trade",    f"{CURRENCY}{lb['best_trade']:+.0f}")
-        s8.metric("Worst Trade",   f"{CURRENCY}{lb['max_dd']:+.0f}")
+        s7.metric("Best Trade",    f"{LB_CURRENCY}{lb['best_trade']:+.0f}")
+        s8.metric("Worst Trade",   f"{LB_CURRENCY}{lb['max_dd']:+.0f}")
         streak_icon = "🔥" if lb['streak_type']=="WIN" else "❄️"
         s9.metric("Current Streak",f"{streak_icon} {lb['streak']} {lb['streak_type']}")
 
         st.divider()
-
-        # P&L distribution chart
         pnls = lb['pnl_series']
         colors_lb = ['#00ff88' if p > 0 else '#ff4444' for p in pnls]
         fig_lb = go.Figure(go.Bar(
@@ -1195,50 +1620,45 @@ with tab4:
         gs = dict(gridcolor='rgba(255,255,255,0.04)', showgrid=True)
         fig_lb.update_layout(
             template='plotly_dark', paper_bgcolor='#0a0e1a', plot_bgcolor='#0d1520',
-            height=300, title="Trade-by-Trade P&L",
+            height=300, title=f"{lb_market} — Trade-by-Trade P&L",
             margin=dict(l=8,r=8,t=38,b=8), font=dict(color='#7a8fa6',size=11),
-            xaxis={**gs,'title':'Trade #'}, yaxis={**gs,'title':f'P&L ({CURRENCY})'},
+            xaxis={**gs,'title':'Trade #'}, yaxis={**gs,'title':f'P&L ({LB_CURRENCY})'},
             shapes=[
+                dict(type='line', xref='paper', yref='y', x0=0, x1=1, y0=0, y1=0,
+                     line=dict(color='#ffffff33', width=1)),
                 dict(type='line', xref='paper', yref='y', x0=0, x1=1,
-                     y0=0, y1=0, line=dict(color='#ffffff33', width=1)),
+                     y0=lb['avg_win'], y1=lb['avg_win'], line=dict(color='#00ff8866', width=1, dash='dot')),
                 dict(type='line', xref='paper', yref='y', x0=0, x1=1,
-                     y0=lb['avg_win'], y1=lb['avg_win'],
-                     line=dict(color='#00ff8866', width=1, dash='dot')),
-                dict(type='line', xref='paper', yref='y', x0=0, x1=1,
-                     y0=lb['avg_loss'], y1=lb['avg_loss'],
-                     line=dict(color='#ff444466', width=1, dash='dot')),
+                     y0=lb['avg_loss'], y1=lb['avg_loss'], line=dict(color='#ff444466', width=1, dash='dot')),
             ],
             annotations=[
-                dict(xref='paper', yref='y', x=1.01, y=lb['avg_win'],
-                     text="Avg Win", showarrow=False, font=dict(color='#00ff88', size=10), xanchor='left'),
-                dict(xref='paper', yref='y', x=1.01, y=lb['avg_loss'],
-                     text="Avg Loss", showarrow=False, font=dict(color='#ff4444', size=10), xanchor='left'),
+                dict(xref='paper', yref='y', x=1.01, y=lb['avg_win'], text="Avg Win",
+                     showarrow=False, font=dict(color='#00ff88', size=10), xanchor='left'),
+                dict(xref='paper', yref='y', x=1.01, y=lb['avg_loss'], text="Avg Loss",
+                     showarrow=False, font=dict(color='#ff4444', size=10), xanchor='left'),
             ]
         )
         st.plotly_chart(fig_lb, use_container_width=True)
 
-        # Cumulative equity curve
         cum = np.cumsum([100000] + pnls)
         fig_eq = go.Figure(go.Scatter(
-            y=cum, mode='lines+markers',
-            line=dict(color='#00d4ff', width=2),
+            y=cum, mode='lines+markers', line=dict(color='#00d4ff', width=2),
             marker=dict(size=4, color=['#00ff88' if p > 0 else '#ff4444' for p in [0]+pnls]),
             fill='tozeroy', fillcolor='rgba(0,212,255,0.06)'))
         fig_eq.update_layout(
             template='plotly_dark', paper_bgcolor='#0a0e1a', plot_bgcolor='#0d1520',
-            height=260, title="Portfolio Equity Curve",
+            height=260, title=f"{lb_market} — Portfolio Equity Curve",
             margin=dict(l=8,r=8,t=38,b=8), font=dict(color='#7a8fa6',size=11),
-            xaxis={**gs,'title':'Trade #'}, yaxis={**gs,'title':f'Portfolio Value ({CURRENCY})'},
+            xaxis={**gs,'title':'Trade #'}, yaxis={**gs,'title':f'Portfolio Value ({LB_CURRENCY})'},
             shapes=[dict(type='line', xref='paper', yref='y', x0=0, x1=1,
                          y0=100000, y1=100000, line=dict(color='#ffffff33', width=1, dash='dot'))],
-            annotations=[dict(xref='paper', yref='y', x=1.01, y=100000,
-                              text="Start", showarrow=False, font=dict(color='#aaa', size=10), xanchor='left')]
+            annotations=[dict(xref='paper', yref='y', x=1.01, y=100000, text="Start",
+                              showarrow=False, font=dict(color='#aaa', size=10), xanchor='left')]
         )
         st.plotly_chart(fig_eq, use_container_width=True)
 
         st.divider()
         lb_col1, lb_col2 = st.columns(2)
-
         with lb_col1:
             st.markdown("#### 🥇 Top Winning Stocks")
             for i, (stk, pnl) in enumerate(lb['top_winners']):
@@ -1246,18 +1666,16 @@ with tab4:
                 cls = ["leaderboard-gold","leaderboard-silver","leaderboard-bronze","card-hold","card-hold"][min(i,4)]
                 st.markdown(f"""<div class="{cls}">
                 {medal} <strong>{stk}</strong>
-                <span style="float:right;color:#00ff88;font-weight:700">{CURRENCY}{pnl:+,.0f}</span>
+                <span style="float:right;color:#00ff88;font-weight:700">{LB_CURRENCY}{pnl:+,.0f}</span>
                 </div>""", unsafe_allow_html=True)
-
         with lb_col2:
             st.markdown("#### 📉 Stocks to Avoid")
             for stk, pnl in lb['top_losers']:
                 st.markdown(f"""<div class="card-sell">
                 ❌ <strong>{stk}</strong>
-                <span style="float:right;color:#ff4444;font-weight:700">{CURRENCY}{pnl:+,.0f}</span>
+                <span style="float:right;color:#ff4444;font-weight:700">{LB_CURRENCY}{pnl:+,.0f}</span>
                 </div>""", unsafe_allow_html=True)
 
-        # Trading grade report card
         st.divider()
         st.markdown("#### 📋 Trader Report Card")
         grade_items = [
@@ -1279,21 +1697,20 @@ with tab4:
                 <div style="background:{color};width:{norm:.0f}%;height:6px;border-radius:4px"></div>
               </div>
             </div>""", unsafe_allow_html=True)
-
     else:
-        st.info("Abhi koi completed trades nahi hain. Live Radar mein trades execute hone ke baad yahan stats dikhenge.")
+        st.info(f"{lb_market} mein abhi koi completed trades nahi hain. AI Agent jab BUY/SELL execute karega, tab yahan stats dikhenge.")
         st.markdown("""<div class="ai-box">
-        💡 <strong>Tip:</strong> Live Radar tab mein jao, market scan karo, aur BUY signals pe auto-trades execute honge.
-        Jab trades close honge (target/SL hit), tab yahan leaderboard populate hoga.
+        💡 <strong>Tip:</strong> Sidebar mein 'AI Agent ACTIVE' on rakho. Agent har 5 min mein scan karega aur jab trades close honge (target/SL hit), tab leaderboard populate hoga.
         </div>""", unsafe_allow_html=True)
 
 # ========== TAB 5: OPTIONS CHAIN (was tab3) ==========
 with tab5:
     st.markdown("### 📈 F&O Options Chain")
-    if "NSE" in market_tab:
+    fo_market = st.selectbox("Market:", ACTIVE_MARKETS if ACTIVE_MARKETS else ["NSE"], key="fo_market")
+    if fo_market == "NSE":
         fo_stocks = ["NIFTY","BANKNIFTY","RELIANCE.NS","TCS.NS","INFY.NS","TATAMOTORS.NS",
                      "SBIN.NS","KOTAKBANK.NS","HCLTECH.NS","BHARTIARTL.NS","AXISBANK.NS"]
-    elif "US" in market_tab:
+    elif fo_market == "US":
         fo_stocks = ["AAPL","TSLA","NVDA","AMZN","MSFT","GOOGL","AMD","META"]
     else:
         fo_stocks = ["BTC-USD","ETH-USD"]
@@ -1345,10 +1762,12 @@ with tab6:
     st.markdown("### ⚠️ Risk Management Calculator")
     st.info("Har trade se pehle risk calculate karo — professional traders always do this!")
 
+    CURRENCY = st.radio("Currency:", ["₹","$"], horizontal=True, key="risk_currency")
+
     rc1, rc2 = st.columns(2)
     with rc1:
         st.markdown("#### 📥 Trade Parameters")
-        cap     = st.number_input("Capital (₹)", value=100000, step=5000, min_value=1000)
+        cap     = st.number_input(f"Capital ({CURRENCY})", value=100000, step=5000, min_value=1000)
         risk_p  = st.slider("Risk per trade (%)", 0.5, 5.0, 1.5, 0.1)
         entry_p = st.number_input(f"Entry Price ({CURRENCY})", value=500.0, step=0.5, min_value=0.1)
         sl_p    = st.number_input(f"Stop Loss Price ({CURRENCY})", value=480.0, step=0.5, min_value=0.1)
@@ -1419,24 +1838,26 @@ with tab6:
 # ========== TAB 7: PRICE ALERTS (was tab5) ==========
 with tab7:
     st.markdown("### 🔔 Price Alert System")
-    st.info("Alerts check hote hain jab bhi Live Radar tab refresh hota hai.")
+    st.info("Alerts check hote hain jab bhi AI Agent scan karta hai (har 5 min).")
 
     a1, a2 = st.columns(2)
     with a1:
         st.markdown("#### ➕ New Alert")
-        alert_sym  = st.selectbox("Stock:", ACTIVE_STOCKS, key="alert_sym")
+        alert_market = st.selectbox("Market:", ACTIVE_MARKETS if ACTIVE_MARKETS else ["NSE"], key="alert_mkt")
+        ALERT_CUR = AGENT_CURRENCY[alert_market]
+        alert_sym  = st.selectbox("Stock:", MARKET_UNIVERSE[alert_market], key="alert_sym")
         alert_cond = st.radio("Condition:", ["Above", "Below"], horizontal=True)
-        alert_tgt  = st.number_input(f"Target Price ({CURRENCY}):", value=500.0, step=1.0, min_value=0.1)
+        alert_tgt  = st.number_input(f"Target Price ({ALERT_CUR}):", value=500.0, step=1.0, min_value=0.1)
         alert_note = st.text_input("Note (optional):", placeholder="e.g. Breakout level")
 
         if st.button("🔔 Set Alert", type="primary"):
             new_alert = {
-                'symbol': alert_sym, 'condition': alert_cond,
+                'symbol': alert_sym, 'market': alert_market, 'condition': alert_cond,
                 'target': alert_tgt, 'note': alert_note,
                 'created': now.strftime('%H:%M:%S')
             }
             st.session_state.price_alerts.append(new_alert)
-            st.success(f"✅ Alert set: {alert_sym} {alert_cond} {CURRENCY}{alert_tgt:.2f}")
+            st.success(f"✅ Alert set: {alert_sym} {alert_cond} {ALERT_CUR}{alert_tgt:.2f}")
 
     with a2:
         st.markdown("#### 📋 Active Alerts")
@@ -1446,9 +1867,10 @@ with tab7:
                 with col_al1:
                     icon = "⬆️" if al['condition']=="Above" else "⬇️"
                     note = f" — {al['note']}" if al.get('note') else ""
+                    al_cur = AGENT_CURRENCY.get(al.get('market','NSE'), '₹')
                     st.markdown(f"""<div class="card-alert">
                     <span style="color:#ffaa00;font-weight:700">{al['symbol']}</span>
-                    {icon} <span style="color:#fff">{CURRENCY}{al['target']:.2f}</span>
+                    {icon} <span style="color:#fff">{al_cur}{al['target']:.2f}</span>
                     <span style="color:#555;font-size:0.78rem">{note} | Set: {al['created']}</span>
                     </div>""", unsafe_allow_html=True)
                 with col_al2:
@@ -1462,8 +1884,8 @@ with tab7:
     st.markdown("#### ✅ Triggered Alerts History")
     if st.session_state.triggered_alerts:
         trig_rows = [{"Stock":t['symbol'],"Condition":t['condition'],
-                      f"Target({CURRENCY})":t['target'],
-                      f"Hit At({CURRENCY})":t.get('triggered_price','-'),
+                      "Target":f"{AGENT_CURRENCY.get(t.get('market','NSE'),'₹')}{t['target']}",
+                      "Hit At":f"{AGENT_CURRENCY.get(t.get('market','NSE'),'₹')}{t.get('triggered_price','-')}",
                       "Time":t.get('triggered_at','-'),
                       "Note":t.get('note','')} for t in st.session_state.triggered_alerts]
         st.dataframe(pd.DataFrame(trig_rows), use_container_width=True, hide_index=True)
@@ -1476,7 +1898,8 @@ with tab7:
 # ========== TAB 8: NEWS (was tab6) ==========
 with tab8:
     st.markdown("### 📰 Live News & Sentiment")
-    news_sel = st.selectbox("Stock:", ACTIVE_STOCKS, key="news_sel")
+    news_market = st.selectbox("Market:", ACTIVE_MARKETS if ACTIVE_MARKETS else ["NSE"], key="news_mkt")
+    news_sel = st.selectbox("Stock:", MARKET_UNIVERSE[news_market], key="news_sel")
 
     with st.spinner("Fetching news..."):
         news_items = get_news(news_sel)
@@ -1509,7 +1932,8 @@ with tab9:
 
     bt1, bt2 = st.columns(2)
     with bt1:
-        bt_stk = st.selectbox("Stock:", ACTIVE_STOCKS, key="bt_sel")
+        bt_market = st.selectbox("Market:", ACTIVE_MARKETS if ACTIVE_MARKETS else ["NSE"], key="bt_mkt")
+        bt_stk = st.selectbox("Stock:", MARKET_UNIVERSE[bt_market], key="bt_sel")
         bt_sl  = st.slider("Stop Loss %",  1.0, 10.0, 3.0, 0.5)
         bt_tg  = st.slider("Target %",     2.0, 25.0, 8.0, 0.5)
     with bt2:
@@ -1597,64 +2021,79 @@ with tab9:
             except Exception as e:
                 st.error(f"Backtest error: {e}")
 
-# ========== TAB 10: PORTFOLIO (was tab8) ==========
+# ========== TAB 10: PORTFOLIO (3 AGENTS) ==========
 with tab10:
-    st.markdown("### 💼 Live Portfolio")
+    st.markdown("### 💼 Live Portfolio — All 3 AI Agents")
 
-    p1,p2,p3,p4 = st.columns(4)
-    p1.metric("Total Value", f"{CURRENCY}{total_val:,.2f}", f"{'+' if pnl>=0 else ''}{pnl:,.2f}")
-    p2.metric("Cash",        f"{CURRENCY}{st.session_state.balance:,.2f}")
-    p3.metric("P&L %",       f"{pnl/1000:+.2f}%")
-    p4.metric("Positions",   open_pos)
+    for mkt in ACTIVE_MARKETS:
+        agent = st.session_state[AGENT_KEYS[mkt]]
+        cur   = AGENT_CURRENCY[mkt]
+        icon  = {"NSE":"🇮🇳","Crypto":"🪙","US":"🇺🇸"}[mkt]
 
-    st.divider()
-    active = {s:q for s,q in st.session_state.positions.items() if q>0}
+        inv = sum(agent['entry_price'].get(k, 0) * q for k, q in agent['positions'].items() if q > 0)
+        val = agent['balance'] + inv
+        pnl_ = val - 100000.0
+        open_p = len([q for q in agent['positions'].values() if q > 0])
 
-    if active:
-        st.markdown("#### 📂 Open Positions")
-        rows_p = []
-        for s,q in active.items():
-            entry  = st.session_state.entry_price.get(s,0)
-            high   = st.session_state.highest_price.get(s,entry)
-            trail  = high*(1-STOP_LOSS_PCT)
-            tg_px  = entry*(1+TARGET_PCT)
-            rows_p.append({"Stock":s,"Qty":q,
-                            f"Entry({CURRENCY})":f"{entry:.2f}",
-                            f"TrailSL({CURRENCY})":f"{trail:.2f}",
-                            f"Target({CURRENCY})":f"{tg_px:.2f}",
-                            f"Value({CURRENCY})":f"{q*entry:,.0f}"})
-        st.dataframe(pd.DataFrame(rows_p), use_container_width=True, hide_index=True)
+        st.markdown(f"## {icon} {mkt} Agent")
+        p1,p2,p3,p4 = st.columns(4)
+        p1.metric("Total Value", f"{cur}{val:,.2f}", f"{'+' if pnl_>=0 else ''}{pnl_:,.2f}")
+        p2.metric("Cash",        f"{cur}{agent['balance']:,.2f}")
+        p3.metric("P&L %",       f"{pnl_/1000:+.2f}%")
+        p4.metric("Positions",   open_p)
 
-    st.divider()
-    if st.session_state.trade_log:
-        st.markdown("#### 📋 Trade Log")
-        st.dataframe(pd.DataFrame(st.session_state.trade_log), use_container_width=True, hide_index=True)
+        active = {k:q for k,q in agent['positions'].items() if q>0}
+        if active:
+            st.markdown("##### 📂 Open Positions")
+            rows_p = []
+            for pos_key, q in active.items():
+                stk    = pos_key.split("__")[0]
+                pmode  = agent['entry_mode'].get(pos_key, '-')
+                sl_pct_disp, tg_pct_disp = RISK_PARAMS.get(pmode, (0.03, 0.08))
+                entry  = agent['entry_price'].get(pos_key, 0)
+                high   = agent['highest_price'].get(pos_key, entry)
+                trail  = high*(1 - sl_pct_disp)
+                tg_px  = entry*(1 + tg_pct_disp)
+                rows_p.append({"Stock":stk, "Mode":pmode, "Qty":q,
+                                f"Entry({cur})":f"{entry:.2f}",
+                                f"TrailSL({cur})":f"{trail:.2f}",
+                                f"Target({cur})":f"{tg_px:.2f}",
+                                f"Value({cur})":f"{q*entry:,.0f}"})
+            st.dataframe(pd.DataFrame(rows_p), use_container_width=True, hide_index=True)
+        else:
+            st.caption("Koi open position nahi hai abhi.")
 
-    # P&L equity curve
-    if st.session_state.trade_log:
-        sells = [t for t in st.session_state.trade_log if t.get('action')=='SELL']
+        with st.expander(f"📋 {mkt} — Full Trade Log"):
+            if agent['trade_log']:
+                log_display = []
+                for t in agent['trade_log'][-50:]:
+                    log_display.append({
+                        "Time": t.get('time','-'), "Mode": t.get('mode','-'),
+                        "Stock": t.get('stock','-'), "Action": t.get('action','-'),
+                        f"Price({cur})": f"{t.get('price',0):.2f}",
+                        "Qty": t.get('qty','-'),
+                        "P&L": f"{cur}{t.get('pnl',0):+.2f}" if 'pnl' in t else "-",
+                    })
+                st.dataframe(pd.DataFrame(log_display), use_container_width=True, hide_index=True)
+            else:
+                st.caption("Abhi koi trade nahi hua.")
+
+        sells = [t for t in agent['trade_log'] if t.get('action')=='SELL']
         if sells:
             cumulative = 100000 + np.cumsum([t.get('pnl',0) for t in sells])
             fig_eq = go.Figure(go.Scatter(
-                y=cumulative, mode='lines',
-                line=dict(color='#00d4ff',width=2),
+                y=cumulative, mode='lines', line=dict(color='#00d4ff',width=2),
                 fill='tozeroy', fillcolor='rgba(0,212,255,0.07)'))
             fig_eq.update_layout(
                 template='plotly_dark', paper_bgcolor='#0a0e1a', plot_bgcolor='#0d1520',
-                height=240, title="Portfolio Equity Curve",
+                height=220, title=f"{mkt} Equity Curve",
                 margin=dict(l=8,r=8,t=38,b=8), font=dict(color='#7a8fa6',size=11),
                 xaxis=dict(gridcolor='rgba(255,255,255,0.04)',showgrid=True,title="Trades"),
-                yaxis=dict(gridcolor='rgba(255,255,255,0.04)',showgrid=True,title=f"Value ({CURRENCY})"),
+                yaxis=dict(gridcolor='rgba(255,255,255,0.04)',showgrid=True,title=f"Value ({cur})"),
             )
             st.plotly_chart(fig_eq, use_container_width=True)
 
-    st.divider()
-    if st.button("🔁 Reset Portfolio", type="secondary"):
-        for k,v in DEFAULTS.items():
-            st.session_state[k] = v if not isinstance(v,list) else []
-        st.success("✅ Portfolio reset!"); st.rerun()
+        st.divider()
 
-# ================= FOOTER =================
-st.divider()
-st.caption("⚡ QuantEdge AI v4.0 | NSE India (100+ stocks) · Crypto · US Stocks | ML Prediction | Paper Trading Only")
-st.caption("⚠️ Educational purpose only. Real money invest karne se pehle SEBI advisor se salah lein.")
+    if st.button("🔁 Reset ALL Portfolios", type="secondary"):
+        st.session_state.agent_nse    = make_agent_s
