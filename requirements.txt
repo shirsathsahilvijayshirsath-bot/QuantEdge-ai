@@ -1,5 +1,4 @@
 streamlit
-streamlit-autorefresh
 yfinance
 pandas
 numpy
@@ -7,3 +6,4 @@ plotly
 scikit-learn
 requests
 pytz
+streamlit-autorefresh
