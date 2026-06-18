@@ -1,9 +1,8 @@
-# ================= QUANTEDGE AI v5.0 - AUTONOMOUS AI AGENT =================
-# Features: Fully Autonomous AI Trading Agent (NSE + Crypto + US)
-#           Auto BUY/SELL decisions, Telegram alerts with full reasoning,
-#           Separate Intraday + Swing logic, Weekly Win-Rate Reports,
-#           Fundamental + Technical + Sentiment fusion for Swing trades
-# ==============================================================================
+# ================= QUANTEDGE AI v6.0 - AUTONOMOUS AI AGENT + INTELLIGENCE SUITE =================
+# New in v6: AI Chat Assistant, Sector Heatmap, Multi-Timeframe Confirmation,
+#            Drawdown Protection, Auto-Compounding, Correlation Checker,
+#            Daily AI Market Summary Report
+# ====================================================================================
 
 import streamlit as st
 import yfinance as yf
@@ -28,7 +27,7 @@ except ImportError:
     AUTOREFRESH_AVAILABLE = False
 
 st.set_page_config(
-    page_title="QuantEdge AI v5.0 — Autonomous Agent",
+    page_title="QuantEdge AI v6.0 — Autonomous Agent",
     layout="wide",
     page_icon="⚡",
     initial_sidebar_state="expanded"
@@ -154,13 +153,53 @@ SP500_INDEX  = "^GSPC"
 BTC_BENCH    = "BTC-USD"
 
 SECTOR_MAP = {
-    "IT":      ["INFY.NS","TCS.NS","HCLTECH.NS","TATAELXSI.NS","PERSISTENT.NS","LTIM.NS"],
-    "Banking": ["SBIN.NS","KOTAKBANK.NS","AXISBANK.NS"],
-    "Auto":    ["TATAMOTORS.NS","MARUTI.NS","M&M.NS","BAJAJ-AUTO.NS","EICHERMOT.NS","TVSMOTOR.NS"],
-    "Pharma":  ["TORNTPHARM.NS","ZYDUSLIFE.NS"],
-    "Infra":   ["DLF.NS","GODREJPROP.NS","NTPC.NS","HAL.NS","ABB.NS"],
-    "FMCG":    ["BRITANNIA.NS","HINDUNILVR.NS","VBL.NS"],
-    "Others":  ["ZOMATO.NS","TITAN.NS","SUZLON.NS","HINDALCO.NS","TRENT.NS","SRF.NS","NETWEB.NS","RELIANCE.NS"],
+    "NSE": {
+        "IT":         ["INFY.NS","TCS.NS","HCLTECH.NS","WIPRO.NS","TECHM.NS","TATAELXSI.NS",
+                       "PERSISTENT.NS","LTIM.NS","MPHASIS.NS","COFORGE.NS","HAPPSTMNDS.NS",
+                       "NETWEB.NS","KPIT.NS","CYIENT.NS","MASTEK.NS"],
+        "Banking":    ["HDFCBANK.NS","ICICIBANK.NS","SBIN.NS","KOTAKBANK.NS","AXISBANK.NS",
+                       "BANDHANBNK.NS","FEDERALBNK.NS","IDFCFIRSTB.NS","RBLBANK.NS"],
+        "Auto":       ["TATAMOTORS.NS","MARUTI.NS","M&M.NS","BAJAJ-AUTO.NS","EICHERMOT.NS",
+                       "TVSMOTOR.NS","HEROMOTOCO.NS","BOSCHLTD.NS","MRF.NS","MOTHERSON.NS"],
+        "Pharma":     ["SUNPHARMA.NS","TORNTPHARM.NS","ZYDUSLIFE.NS","AUROPHARMA.NS",
+                       "ALKEM.NS","IPCALAB.NS","APOLLOHOSP.NS","MAXHEALTH.NS","FORTIS.NS",
+                       "METROPOLIS.NS","LALPATHLAB.NS","THYROCARE.NS"],
+        "Energy":     ["ONGC.NS","NTPC.NS","POWERGRID.NS","COALINDIA.NS","ADANIPOWER.NS",
+                       "TATAPOWER.NS","CESC.NS","TORNTPOWER.NS","ADANIGREEN.NS"],
+        "Metals":     ["JSWSTEEL.NS","TATASTEEL.NS","HINDALCO.NS","VEDL.NS"],
+        "FMCG":       ["HINDUNILVR.NS","ITC.NS","NESTLEIND.NS","BRITANNIA.NS","VBL.NS",
+                       "MARICO.NS","DABUR.NS","GODREJCP.NS","JUBLFOOD.NS","DEVYANI.NS"],
+        "Realty":     ["DLF.NS","GODREJPROP.NS","OBEROIRLTY.NS","PHOENIXLTD.NS","PRESTIGE.NS"],
+        "Finance":    ["BAJFINANCE.NS","BAJAJFINSV.NS","MUTHOOTFIN.NS","CHOLAFIN.NS",
+                       "RECLTD.NS","PFC.NS","HDFCLIFE.NS","SBILIFE.NS","ICICIGI.NS","MFSL.NS"],
+        "Defense":    ["HAL.NS","BEL.NS","BHEL.NS","COCHINSHIP.NS","MAZDOCK.NS","GRSE.NS"],
+        "Consumer":   ["TITAN.NS","ASIANPAINT.NS","TRENT.NS","DMART.NS","ZOMATO.NS",
+                       "NYKAA.NS","PAYTM.NS","POLICYBZR.NS","DELHIVERY.NS","IRCTC.NS"],
+        "Chemicals":  ["SRF.NS","AARTIIND.NS","DEEPAKNTR.NS","PIIND.NS","UPL.NS","PIDILITIND.NS"],
+        "Industrials":["ABB.NS","CUMMINSIND.NS","THERMAX.NS","SIEMENS.NS","ULTRACEMCO.NS",
+                       "GRASIM.NS","HAVELLS.NS"],
+        "Conglomerate":["RELIANCE.NS","ADANIENT.NS","ADANIPORTS.NS","LT.NS"],
+    },
+    "Crypto": {
+        "Layer1":     ["BTC-USD","ETH-USD","SOL-USD","ADA-USD","AVAX-USD","NEAR-USD","APT-USD","SUI-USD"],
+        "Exchange/DeFi":["BNB-USD","UNI-USD","LINK-USD"],
+        "Payments":   ["XRP-USD","LTC-USD","BCH-USD","XLM-USD"],
+        "Meme/Other": ["DOGE-USD"],
+        "Scaling":    ["MATIC-USD","ARB-USD","OP-USD","TIA-USD"],
+        "Infra":      ["DOT-USD","ATOM-USD","ALGO-USD","FIL-USD","INJ-USD"],
+    },
+    "US": {
+        "Big Tech":   ["AAPL","MSFT","GOOGL","AMZN","META"],
+        "Semiconductors":["NVDA","AMD","MU","INTC","QCOM","AVGO","TSM","SMCI","ARM"],
+        "EV/Auto":    ["TSLA","F","GM","RIVN","LCID","NIO","XPEV","LI"],
+        "Banking":    ["JPM","BAC","GS","MS","C","WFC"],
+        "Fintech":    ["V","AXP","COIN","HOOD"],
+        "Energy":     ["XOM","CVX","COP","SLB","HAL"],
+        "Healthcare": ["PFE","MRNA","JNJ","ABBV","LLY","UNH","CVS","CI","HUM","ANTM"],
+        "Consumer":   ["WMT","DIS","NFLX","UBER","ABNB","RBLX"],
+        "Software":   ["SNOW","SHOP","CRWD","PLTR"],
+        "China ADR":  ["BABA","JD","PDD"],
+    },
 }
 
 # ================= SESSION STATE — 3 INDEPENDENT AI AGENTS =================
@@ -170,11 +209,14 @@ SECTOR_MAP = {
 def make_agent_state():
     return {
         "balance": 100000.0,
+        "starting_capital": 100000.0,   # tracks base for compounding calc
         "positions": {},        # {symbol: qty}
         "entry_price": {},
         "highest_price": {},
         "entry_mode": {},        # {symbol: "Intraday"/"Swing"} - tracks which mode each position was opened in
         "trade_log": [],         # full history: BUY/SELL with mode tag
+        "paused_until": None,    # drawdown protection: ISO timestamp string, agent won't open new trades until this passes
+        "pause_reason": "",
     }
 
 DEFAULTS = {
@@ -187,6 +229,8 @@ DEFAULTS = {
     "last_scan_time": None,
     "weekly_reports": [],            # stores generated weekly win-rate snapshots
     "scan_log": [],                  # rolling log of AI's analysis decisions (for "show reasoning" panel)
+    "daily_summaries": [],           # stores generated daily AI market summary reports
+    "last_summary_date": None,
 }
 
 for k, v in DEFAULTS.items():
@@ -241,6 +285,19 @@ with st.sidebar:
     telegram_on = st.toggle("📲 Telegram Alerts", value=True)
     min_score   = st.slider("Min Signal Score (auto-trade)", 50, 95, 75)
     max_alloc_pct = st.slider("Max % capital per trade", 5, 30, 15)
+    mtf_confirm = st.toggle("🎯 Multi-Timeframe Confirmation", value=True,
+                            help="Higher timeframe trend ko bhi check karega before BUY — fewer but stronger signals")
+
+    st.divider()
+    st.markdown("### 📉 Drawdown Protection")
+    dd_protection_on = st.toggle("Auto-pause on losing streak", value=True)
+    dd_streak_limit   = st.slider("Pause after N consecutive losses", 2, 8, 4)
+    dd_pause_hours    = st.slider("Pause duration (hours)", 1, 48, 12)
+
+    st.divider()
+    st.markdown("### 🔄 Auto-Compounding")
+    compounding_on = st.toggle("Reinvest profits (compound)", value=False,
+                               help="Off: position size stays based on fixed starting capital. On: position size grows/shrinks with current balance.")
 
     st.divider()
     st.caption(f"🕒 {now.strftime('%d %b %Y  %H:%M:%S')} IST")
@@ -308,6 +365,49 @@ def get_market_regime(bench, current_mode):
         return bull, f"{'Bullish' if bull else 'Bearish'} ({pct:+.1f}% vs SMA50)", abs(pct)
     except:
         return True, "Unknown", 0
+
+# ================= MULTI-TIMEFRAME CONFIRMATION =================
+@st.cache_data(ttl=600, show_spinner=False)
+def get_higher_timeframe_trend(symbol, current_mode):
+    """
+    Confirms the trade direction against a HIGHER timeframe to avoid
+    false signals against the bigger trend.
+    Intraday -> confirms against 1-Hour (resampled) + Daily trend
+    Swing    -> confirms against Weekly trend
+    Returns: (aligned: bool, detail: str)
+    """
+    try:
+        if current_mode == "Intraday":
+            # 1-hour trend via resampling 5-min intraday data
+            df5 = yf.Ticker(symbol).history(period="5d", interval="5m")
+            if df5.empty or len(df5) < 30:
+                return True, "1H data unavailable — skipping confirmation"
+            df1h = df5['Close'].resample('1h').last().dropna()
+            if len(df1h) < 10:
+                return True, "Insufficient 1H bars"
+            ema_fast = df1h.ewm(span=5).mean().iloc[-1]
+            ema_slow = df1h.ewm(span=10).mean().iloc[-1]
+            hourly_bull = ema_fast > ema_slow
+
+            # Daily trend
+            dfd = yf.Ticker(symbol).history(period="1mo")
+            daily_bull = True
+            if not dfd.empty and len(dfd) >= 10:
+                daily_bull = dfd['Close'].iloc[-1] > dfd['Close'].rolling(10).mean().iloc[-1]
+
+            aligned = hourly_bull and daily_bull
+            detail = f"1H:{'🟢' if hourly_bull else '🔴'} Daily:{'🟢' if daily_bull else '🔴'}"
+            return aligned, detail
+        else:
+            # Swing -> confirm against Weekly trend
+            dfw = yf.Ticker(symbol).history(period="1y", interval="1wk")
+            if dfw.empty or len(dfw) < 10:
+                return True, "Weekly data unavailable — skipping confirmation"
+            weekly_bull = dfw['Close'].iloc[-1] > dfw['Close'].rolling(10).mean().iloc[-1]
+            detail = f"Weekly trend: {'🟢 Bullish' if weekly_bull else '🔴 Bearish'}"
+            return weekly_bull, detail
+    except:
+        return True, "MTF check failed — proceeding without confirmation"
 
 # ================= INDICATORS =================
 def compute_indicators(df, current_mode):
@@ -389,6 +489,64 @@ def get_sr_levels(df, n_levels=5):
             "resistances": [round(r, 2) for r in res_above],
             "supports":    [round(s, 2) for s in sup_below],
             "current":     round(current, 2),
+        }
+    except:
+        return None
+
+# ================= SECTOR HEATMAP =================
+@st.cache_data(ttl=900, show_spinner=False)
+def get_sector_performance(market, period="5d"):
+    """
+    Computes average % change per sector over the given period.
+    Returns list of dicts sorted by performance descending.
+    """
+    sector_map = SECTOR_MAP.get(market, {})
+    results = []
+    for sector, symbols in sector_map.items():
+        changes = []
+        for sym in symbols[:8]:  # cap per sector to keep it fast
+            try:
+                df = yf.Ticker(sym).history(period=period)
+                if df is not None and len(df) >= 2:
+                    chg = (df['Close'].iloc[-1] / df['Close'].iloc[0] - 1) * 100
+                    changes.append(chg)
+            except:
+                continue
+        if changes:
+            avg_chg = float(np.mean(changes))
+            results.append({
+                "sector": sector,
+                "avg_change_pct": round(avg_chg, 2),
+                "stocks_counted": len(changes),
+                "strength": "🔥 Hot" if avg_chg > 2 else "🟢 Warm" if avg_chg > 0 else "🔴 Cold" if avg_chg > -2 else "🧊 Frozen"
+            })
+    return sorted(results, key=lambda x: x['avg_change_pct'], reverse=True)
+
+# ================= CORRELATION CHECKER =================
+@st.cache_data(ttl=1800, show_spinner=False)
+def calc_correlation(symbol_a, symbol_b, period="6mo"):
+    """Returns correlation coefficient between two symbols' daily returns, plus the aligned return series"""
+    try:
+        df_a = yf.Ticker(symbol_a).history(period=period)['Close'].pct_change().dropna()
+        df_b = yf.Ticker(symbol_b).history(period=period)['Close'].pct_change().dropna()
+        df_a.index = df_a.index.tz_localize(None) if df_a.index.tz else df_a.index
+        df_b.index = df_b.index.tz_localize(None) if df_b.index.tz else df_b.index
+        merged = pd.concat([df_a, df_b], axis=1, join='inner')
+        merged.columns = [symbol_a, symbol_b]
+        if len(merged) < 10:
+            return None
+        corr = merged[symbol_a].corr(merged[symbol_b])
+        return {
+            "correlation": round(float(corr), 3),
+            "data_points": len(merged),
+            "interpretation": (
+                "Strong Positive — move together" if corr > 0.7 else
+                "Moderate Positive" if corr > 0.3 else
+                "Weak/No Correlation" if corr > -0.3 else
+                "Moderate Negative" if corr > -0.7 else
+                "Strong Negative — move opposite"
+            ),
+            "series": merged
         }
     except:
         return None
@@ -1077,8 +1235,229 @@ def calc_weekly_winrate(trade_log, mode_filter=None):
         "total_pnl": round(total_pnl, 2)
     }
 
+# ================= DAILY AI MARKET SUMMARY REPORT =================
+def generate_daily_summary(active_markets, active_modes):
+    """
+    Builds a human-readable end-of-day style summary covering:
+    - Market regime per market
+    - Today's trades (BUY/SELL) across all agents
+    - Sector leaders/laggards (NSE)
+    - Top AI picks by score from the most recent scan_log
+    """
+    lines = [f"📝 *DAILY AI MARKET SUMMARY* — {now.strftime('%d %b %Y')}", ""]
+
+    for mkt in active_markets:
+        icon = {"NSE":"🇮🇳","Crypto":"🪙","US":"🇺🇸"}[mkt]
+        cur  = AGENT_CURRENCY[mkt]
+        agent = st.session_state[AGENT_KEYS[mkt]]
+        is_bull, regime_txt, _ = get_market_regime(MARKET_BENCH[mkt], "Swing")
+
+        lines.append(f"{icon} *{mkt}* — {'🟢' if is_bull else '🔴'} {regime_txt}")
+
+        today_trades = [t for t in agent['trade_log']
+                        if t.get('full_time') and t['full_time'].date() == now.date()]
+        buys_today  = [t for t in today_trades if t['action'] == 'BUY']
+        sells_today = [t for t in today_trades if t['action'] == 'SELL']
+
+        if buys_today or sells_today:
+            lines.append(f"   Trades today: {len(buys_today)} BUY, {len(sells_today)} SELL")
+            day_pnl = sum(t.get('pnl', 0) for t in sells_today)
+            if sells_today:
+                lines.append(f"   Today's realized P&L: {cur}{day_pnl:+,.2f}")
+        else:
+            lines.append("   No trades executed today")
+
+        inv = sum(agent['entry_price'].get(k, 0) * q for k, q in agent['positions'].items() if q > 0)
+        val = agent['balance'] + inv
+        lines.append(f"   Portfolio: {cur}{val:,.0f} ({(val-100000)/1000:+.2f}%)")
+        lines.append("")
+
+    # Top AI picks from recent scan log (highest scores seen today)
+    todays_logs = [l for l in st.session_state.scan_log
+                   if l['time'] and l['signal'] == 'BUY']
+    if todays_logs:
+        top_picks = sorted(todays_logs, key=lambda x: x['score'], reverse=True)[:5]
+        lines.append("🌟 *Top AI Picks Today (highest scores):*")
+        for p in top_picks:
+            cur = AGENT_CURRENCY.get(p['market'], '')
+            lines.append(f"   {p['stock']} ({p['market']}/{p['mode']}) — Score {p['score']} @ {cur}{p['price']:.2f}")
+        lines.append("")
+
+    # Sector heatmap snippet for NSE if available
+    if "NSE" in active_markets:
+        try:
+            sectors = get_sector_performance("NSE", period="1d")
+            if sectors:
+                lines.append("🔥 *Sector Movers Today (NSE):*")
+                for s in sectors[:3]:
+                    lines.append(f"   {s['strength']} {s['sector']}: {s['avg_change_pct']:+.2f}%")
+                lines.append("")
+        except:
+            pass
+
+    lines.append(f"🕒 Generated {now.strftime('%H:%M:%S')} IST")
+    return "\n".join(lines)
+
+# ================= AI CHAT ASSISTANT =================
+def chat_assistant_respond(query, active_markets):
+    """
+    Rule-based intelligent assistant that answers questions about stocks,
+    positions, performance, and the AI's own decisions using live data
+    from session state + on-demand analysis. Not a general LLM — it
+    specializes in answering questions about THIS app's data.
+    """
+    q = query.lower().strip()
+
+    # Try to detect a stock symbol mentioned in the query
+    detected_symbol = None
+    detected_market = None
+    for mkt in active_markets:
+        for sym in MARKET_UNIVERSE[mkt]:
+            base = sym.replace(".NS", "").replace("-USD", "").lower()
+            if base in q or sym.lower() in q:
+                detected_symbol = sym
+                detected_market = mkt
+                break
+        if detected_symbol:
+            break
+
+    # ---------- Portfolio / performance questions ----------
+    if any(w in q for w in ["portfolio", "balance", "kitna paisa", "kitna profit", "total p&l", "p&l", "kaisa chal"]):
+        reply = ["📊 **Portfolio Summary:**\n"]
+        for mkt in active_markets:
+            agent = st.session_state[AGENT_KEYS[mkt]]
+            cur = AGENT_CURRENCY[mkt]
+            inv = sum(agent['entry_price'].get(k, 0) * qy for k, qy in agent['positions'].items() if qy > 0)
+            val = agent['balance'] + inv
+            pnl_ = val - 100000.0
+            reply.append(f"**{mkt}:** {cur}{val:,.0f} ({'+' if pnl_>=0 else ''}{pnl_:,.0f}, {pnl_/1000:+.2f}%)")
+        return "\n".join(reply)
+
+    # ---------- Win rate questions ----------
+    if any(w in q for w in ["win rate", "winning", "success rate", "kitne trade"]):
+        reply = ["🏆 **Win-Rate Summary:**\n"]
+        for mkt in active_markets:
+            agent = st.session_state[AGENT_KEYS[mkt]]
+            for md in ["Intraday", "Swing"]:
+                wr = calc_weekly_winrate(agent['trade_log'], mode_filter=md)
+                if wr and wr['trades'] > 0:
+                    reply.append(f"**{mkt} {md}:** {wr['win_rate']}% ({wr['wins']}W/{wr['losses']}L, {wr['trades']} trades this week)")
+        if len(reply) == 1:
+            return "Abhi tak koi completed trades nahi hain inn markets mein. Jab AI Agent trades close karega, tab win-rate yahan dikhega."
+        return "\n".join(reply)
+
+    # ---------- Specific stock questions ----------
+    if detected_symbol:
+        currency_s = AGENT_CURRENCY[detected_market]
+        mode_for_q = "Swing" if "swing" in q else "Intraday" if "intraday" in q else "Swing"
+        df_s = get_data(detected_symbol, mode_for_q)
+        sig, price, score, status, signals = advanced_engine(detected_symbol, df_s, mode_for_q)
+
+        reply = [f"📈 **{detected_symbol}** ({mode_for_q} analysis):\n"]
+        reply.append(f"Current Price: {currency_s}{price:.2f}")
+        reply.append(f"AI Signal: {'🟢' if sig=='BUY' else '🔴' if sig=='SELL' else '⚪'} **{sig}** (Score: {score}/100)")
+
+        bull = [s for s in signals if s[1]=="BULLISH"]
+        bear = [s for s in signals if s[1]=="BEARISH"]
+        if bull:
+            reply.append(f"\n✅ Bullish factors: " + ", ".join([f"{s[0]} ({s[2]})" for s in bull[:3]]))
+        if bear:
+            reply.append(f"⚠️ Bearish factors: " + ", ".join([f"{s[0]} ({s[2]})" for s in bear[:3]]))
+
+        # Check if AI currently holds a position in this stock
+        agent = st.session_state[AGENT_KEYS[detected_market]]
+        for md in ["Intraday", "Swing"]:
+            pos_key = f"{detected_symbol}__{md}"
+            qty = agent['positions'].get(pos_key, 0)
+            if qty > 0:
+                entry = agent['entry_price'].get(pos_key, 0)
+                pnl_open = (price - entry) * qty
+                reply.append(f"\n💼 AI ka open position hai ({md}): {qty} shares @ {currency_s}{entry:.2f} entry, unrealized P&L: {currency_s}{pnl_open:+,.2f}")
+
+        if mode_for_q == "Swing" and "-USD" not in detected_symbol:
+            fund = get_fundamentals(detected_symbol)
+            if fund.get('available'):
+                reply.append(f"\n📋 Fundamentals: {fund.get('summary','N/A')}")
+
+        return "\n".join(reply)
+
+    # ---------- "why did AI buy/sell X" pattern ----------
+    if any(w in q for w in ["kyu liya", "kyun kharida", "why buy", "why sell", "reason"]):
+        return "Kisi specific stock ka naam batao (e.g. 'RELIANCE kyu liya?') — main uski poori AI reasoning dikha dunga."
+
+    # ---------- Sector questions ----------
+    if any(w in q for w in ["sector", "kaunsa sector", "which sector"]):
+        if "NSE" in active_markets:
+            sectors = get_sector_performance("NSE", period="5d")
+            if sectors:
+                reply = ["🔥 **Sector Performance (5 days, NSE):**\n"]
+                for s in sectors[:6]:
+                    reply.append(f"{s['strength']} **{s['sector']}**: {s['avg_change_pct']:+.2f}%")
+                return "\n".join(reply)
+        return "Sector data abhi available nahi hai. NSE market ko active karo sidebar mein."
+
+    # ---------- Open positions ----------
+    if any(w in q for w in ["open position", "kya khareeda", "current holding", "kitne stock"]):
+        reply = ["💼 **Open Positions:**\n"]
+        found_any = False
+        for mkt in active_markets:
+            agent = st.session_state[AGENT_KEYS[mkt]]
+            cur = AGENT_CURRENCY[mkt]
+            active = {k: v for k, v in agent['positions'].items() if v > 0}
+            for pos_key, qty in active.items():
+                stk = pos_key.split("__")[0]
+                pmode = agent['entry_mode'].get(pos_key, '-')
+                entry = agent['entry_price'].get(pos_key, 0)
+                reply.append(f"**{stk}** ({mkt}/{pmode}): {qty} qty @ {cur}{entry:.2f}")
+                found_any = True
+        if not found_any:
+            return "Abhi koi open position nahi hai kisi bhi market mein."
+        return "\n".join(reply)
+
+    # ---------- Fallback ----------
+    return (
+        "Main yeh sawal samajh nahi paya 🤔 Try karo:\n\n"
+        "- *\"RELIANCE ka analysis?\"* — kisi stock ka naam\n"
+        "- *\"Portfolio kaisa chal raha hai?\"*\n"
+        "- *\"Win rate kya hai?\"*\n"
+        "- *\"Kaunsa sector garam hai?\"*\n"
+        "- *\"Open positions dikhao\"*"
+    )
+
 # ================= CORE AI AGENT — SCAN, DECIDE, EXECUTE =================
-def run_ai_agent_for_market(market, mode_, min_score_threshold, max_alloc, telegram_enabled):
+def check_drawdown_protection(agent, mode_, streak_limit, pause_hours):
+    """
+    Checks the last N trades for this mode. If all were losses, pauses
+    new BUY entries for `pause_hours`. Returns (is_paused: bool, reason: str)
+    """
+    # Check if an existing pause is still active
+    if agent.get('paused_until'):
+        try:
+            paused_until_dt = datetime.fromisoformat(agent['paused_until'])
+            if now < paused_until_dt:
+                return True, agent.get('pause_reason', 'Drawdown protection active')
+            else:
+                agent['paused_until'] = None
+                agent['pause_reason'] = ""
+        except:
+            agent['paused_until'] = None
+
+    sells = [t for t in agent['trade_log'] if t.get('action') == 'SELL' and t.get('mode') == mode_ and 'pnl' in t]
+    if len(sells) < streak_limit:
+        return False, ""
+
+    recent = sells[-streak_limit:]
+    if all(t['pnl'] <= 0 for t in recent):
+        pause_until = now + timedelta(hours=pause_hours)
+        agent['paused_until'] = pause_until.isoformat()
+        agent['pause_reason'] = f"{streak_limit} consecutive losses in {mode_} — auto-paused for {pause_hours}h"
+        return True, agent['pause_reason']
+
+    return False, ""
+
+def run_ai_agent_for_market(market, mode_, min_score_threshold, max_alloc, telegram_enabled,
+                            mtf_confirm_on=True, dd_on=True, dd_streak=4, dd_hours=12,
+                            compounding=False):
     """
     The autonomous brain: scans every stock in the given market+mode universe,
     runs advanced_engine (technical + fundamental + sentiment fusion for Swing),
@@ -1092,6 +1471,23 @@ def run_ai_agent_for_market(market, mode_, min_score_threshold, max_alloc, teleg
     sl_pct, tg_pct = RISK_PARAMS[mode_]
     can_trade_now = market_can_trade(market, mode_)
     is_bull, _, _ = get_market_regime(MARKET_BENCH[market], mode_)
+
+    # ---------- DRAWDOWN PROTECTION CHECK ----------
+    is_paused = False
+    pause_reason = ""
+    if dd_on:
+        is_paused, pause_reason = check_drawdown_protection(agent, mode_, dd_streak, dd_hours)
+        if is_paused and not agent.get('_pause_alerted_' + mode_):
+            if telegram_enabled:
+                send_telegram(f"⏸️ *AI AGENT PAUSED*\nMarket: {market} | Mode: {mode_}\nReason: {pause_reason}\nNo new BUY entries until pause lifts. Existing positions still managed normally.")
+            agent['_pause_alerted_' + mode_] = True
+    if not is_paused:
+        agent['_pause_alerted_' + mode_] = False
+
+    # ---------- COMPOUNDING BASE ----------
+    # If compounding is OFF, position sizing is based on starting_capital (fixed).
+    # If ON, position sizing scales with current balance (profits get reinvested).
+    sizing_base = agent['balance'] if compounding else agent.get('starting_capital', 100000.0)
 
     results = []
     for stk in universe:
@@ -1111,9 +1507,17 @@ def run_ai_agent_for_market(market, mode_, min_score_threshold, max_alloc, teleg
         qty = agent['positions'].get(pos_key, 0)
 
         # ---------- AUTO BUY ----------
-        if sig == "BUY" and qty == 0 and price > 0 and can_trade_now and score >= min_score_threshold:
+        if sig == "BUY" and qty == 0 and price > 0 and can_trade_now and score >= min_score_threshold and not is_paused:
+            # Multi-Timeframe Confirmation gate
+            mtf_aligned, mtf_detail = (True, "MTF off")
+            if mtf_confirm_on:
+                mtf_aligned, mtf_detail = get_higher_timeframe_trend(stk, mode_)
+
+            if not mtf_aligned:
+                continue  # higher timeframe disagrees — skip this BUY, don't force it
+
             alloc_pct = (max_alloc/100) if (score >= 88 and is_bull) else (max_alloc*0.66/100) if is_bull else (max_alloc*0.33/100)
-            invest = agent['balance'] * alloc_pct
+            invest = min(sizing_base, agent['balance']) * alloc_pct
             q = int(invest / price) if price > 0 else 0
             if q > 0 and invest <= agent['balance']:
                 agent['positions'][pos_key] = q
@@ -1128,11 +1532,13 @@ def run_ai_agent_for_market(market, mode_, min_score_threshold, max_alloc, teleg
                 agent['trade_log'].append({
                     'time': now.strftime('%H:%M'), 'full_time': now, 'stock': stk,
                     'action': 'BUY', 'price': price, 'qty': q, 'score': score,
-                    'mode': mode_, 'market': market
+                    'mode': mode_, 'market': market, 'mtf_confirm': mtf_detail
                 })
 
                 if telegram_enabled:
                     msg = build_buy_telegram(market, mode_, stk, price, target, stop, score, signals, currency)
+                    if mtf_confirm_on:
+                        msg += f"\n\n🎯 *Multi-Timeframe Check:* {mtf_detail}"
                     send_telegram(msg)
 
         # ---------- AUTO SELL (signal-based exit) ----------
@@ -1217,8 +1623,8 @@ elif st.session_state.agent_running:
 # ===================== HEADER =====================
 st.markdown("""
 <div class="main-header">
-    <h1>⚡ QUANTEDGE AI v5.0</h1>
-    <p>AUTONOMOUS AI TRADING AGENT — NSE · CRYPTO · US STOCKS — AUTO BUY/SELL · TELEGRAM REASONING</p>
+    <h1>⚡ QUANTEDGE AI v6.0</h1>
+    <p>AUTONOMOUS AI AGENT + INTELLIGENCE SUITE — NSE · CRYPTO · US</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1238,7 +1644,10 @@ if do_scan or manual_scan:
             agent_results[mkt] = {}
             for md in ACTIVE_MODES:
                 agent_results[mkt][md] = run_ai_agent_for_market(
-                    mkt, md, min_score, max_alloc_pct, telegram_on
+                    mkt, md, min_score, max_alloc_pct, telegram_on,
+                    mtf_confirm_on=mtf_confirm, dd_on=dd_protection_on,
+                    dd_streak=dd_streak_limit, dd_hours=dd_pause_hours,
+                    compounding=compounding_on
                 )
     st.session_state.last_scan_time = now.strftime('%H:%M:%S')
 
@@ -1278,7 +1687,7 @@ c6.metric("AI Status",       "🟢 LIVE" if st.session_state.agent_running else 
 st.divider()
 
 # ===================== TABS =====================
-tab1,tab2,tab3,tab4,tab5,tab6,tab7,tab8,tab9,tab10,tab11 = st.tabs([
+tab1,tab2,tab3,tab4,tab5,tab6,tab7,tab8,tab9,tab10,tab11,tab12,tab13,tab14,tab15 = st.tabs([
     "🤖 AI Agent Radar",
     "📊 Chart + S&R",
     "🔮 Price Prediction",
@@ -1289,7 +1698,11 @@ tab1,tab2,tab3,tab4,tab5,tab6,tab7,tab8,tab9,tab10,tab11 = st.tabs([
     "📰 News",
     "🧪 Backtest",
     "💼 Portfolio (3 Agents)",
-    "🧠 AI Reasoning Log"
+    "🧠 AI Reasoning Log",
+    "💬 AI Chat Assistant",
+    "🗺️ Sector Heatmap",
+    "📈 Correlation Checker",
+    "📝 Daily Summary"
 ])
 
 # ========== TAB 1: AI AGENT RADAR (per market, per mode) ==========
@@ -1713,387 +2126,4 @@ with tab5:
     elif fo_market == "US":
         fo_stocks = ["AAPL","TSLA","NVDA","AMZN","MSFT","GOOGL","AMD","META"]
     else:
-        fo_stocks = ["BTC-USD","ETH-USD"]
-
-    fo_sel = st.selectbox("Select Stock/Index:", fo_stocks)
-    fo_sym = fo_sel.replace("NIFTY","^NSEI").replace("BANKNIFTY","^NSEBANK")
-
-    with st.spinner("Options data fetch ho rahi hai..."):
-        chain, pcr, expiry = get_options_data(fo_sym)
-
-    if chain is not None and pcr is not None:
-        pc1,pc2,pc3 = st.columns(3)
-        pcr_color   = "🟢" if pcr < 0.8 else "🔴" if pcr > 1.2 else "🟡"
-        pcr_signal  = "Bullish (Calls dominant)" if pcr < 0.8 else "Bearish (Puts dominant)" if pcr > 1.2 else "Neutral"
-        pc1.metric("Put/Call Ratio (PCR)", f"{pcr_color} {pcr}")
-        pc2.metric("PCR Signal", pcr_signal)
-        pc3.metric("Expiry", str(expiry))
-
-        st.info("**PCR Guide:** PCR < 0.8 = Bullish | PCR 0.8-1.2 = Neutral | PCR > 1.2 = Bearish")
-
-        # OI Chart
-        if 'Call OI' in chain.columns and 'Put OI' in chain.columns:
-            top_chain = chain.nlargest(15, 'Call OI').sort_values('Strike')
-            fig_oi = go.Figure()
-            fig_oi.add_trace(go.Bar(x=top_chain['Strike'], y=top_chain['Call OI'],
-                name='Call OI', marker_color='#00ff88', opacity=0.8))
-            fig_oi.add_trace(go.Bar(x=top_chain['Strike'], y=top_chain['Put OI'],
-                name='Put OI',  marker_color='#ff4444', opacity=0.8))
-            fig_oi.update_layout(
-                template='plotly_dark', paper_bgcolor='#0a0e1a', plot_bgcolor='#0d1520',
-                height=320, barmode='group', title="Open Interest by Strike",
-                margin=dict(l=8,r=8,t=35,b=8), font=dict(color='#7a8fa6',size=11),
-                xaxis=dict(gridcolor='rgba(255,255,255,0.04)', showgrid=True),
-                yaxis=dict(gridcolor='rgba(255,255,255,0.04)', showgrid=True),
-            )
-            st.plotly_chart(fig_oi, use_container_width=True)
-
-        st.markdown("#### 📋 Options Chain Table")
-        display_cols = [c for c in ['Strike','Call Price','Call OI','Call Vol',
-                                     'Put Price','Put OI','Put Vol'] if c in chain.columns]
-        show = chain[display_cols].sort_values('Strike').reset_index(drop=True)
-        st.dataframe(show.head(20), use_container_width=True, hide_index=True)
-    else:
-        st.warning(f"**{fo_sel}** ke liye options data nahi mila.")
-        st.info("NSE F&O data ke liye yfinance limited hai. Try: AAPL, TSLA (US stocks) better options data dete hain.")
-
-# ========== TAB 6: RISK CALCULATOR (was tab4) ==========
-with tab6:
-    st.markdown("### ⚠️ Risk Management Calculator")
-    st.info("Har trade se pehle risk calculate karo — professional traders always do this!")
-
-    CURRENCY = st.radio("Currency:", ["₹","$"], horizontal=True, key="risk_currency")
-
-    rc1, rc2 = st.columns(2)
-    with rc1:
-        st.markdown("#### 📥 Trade Parameters")
-        cap     = st.number_input(f"Capital ({CURRENCY})", value=100000, step=5000, min_value=1000)
-        risk_p  = st.slider("Risk per trade (%)", 0.5, 5.0, 1.5, 0.1)
-        entry_p = st.number_input(f"Entry Price ({CURRENCY})", value=500.0, step=0.5, min_value=0.1)
-        sl_p    = st.number_input(f"Stop Loss Price ({CURRENCY})", value=480.0, step=0.5, min_value=0.1)
-        tg_p    = st.number_input(f"Target Price ({CURRENCY})", value=560.0, step=0.5, min_value=0.1)
-
-    qty_r, invest_r, max_loss_r, max_gain_r, rr = calc_position_size(cap, risk_p, entry_p, sl_p, tg_p)
-
-    with rc2:
-        st.markdown("#### 📊 Calculated Results")
-        st.markdown(f"""<div class="risk-box">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px">
-          <div>
-            <div style="color:#7a8fa6;font-size:0.75rem;text-transform:uppercase">Qty to Buy</div>
-            <div style="color:#00d4ff;font-size:1.5rem;font-weight:700">{qty_r}</div>
-          </div>
-          <div>
-            <div style="color:#7a8fa6;font-size:0.75rem;text-transform:uppercase">Investment</div>
-            <div style="color:#00d4ff;font-size:1.5rem;font-weight:700">{CURRENCY}{invest_r:,.0f}</div>
-          </div>
-          <div>
-            <div style="color:#7a8fa6;font-size:0.75rem;text-transform:uppercase">Max Loss</div>
-            <div style="color:#ff4444;font-size:1.5rem;font-weight:700">-{CURRENCY}{max_loss_r:,.0f}</div>
-          </div>
-          <div>
-            <div style="color:#7a8fa6;font-size:0.75rem;text-transform:uppercase">Max Gain</div>
-            <div style="color:#00ff88;font-size:1.5rem;font-weight:700">+{CURRENCY}{max_gain_r:,.0f}</div>
-          </div>
-          <div>
-            <div style="color:#7a8fa6;font-size:0.75rem;text-transform:uppercase">Risk:Reward</div>
-            <div style="color:{'#00ff88' if rr >= 2 else '#ffaa00' if rr >= 1 else '#ff4444'};font-size:1.5rem;font-weight:700">1 : {rr}</div>
-          </div>
-          <div>
-            <div style="color:#7a8fa6;font-size:0.75rem;text-transform:uppercase">Portfolio %</div>
-            <div style="color:#00d4ff;font-size:1.5rem;font-weight:700">{invest_r/cap*100:.1f}%</div>
-          </div>
-        </div>
-        </div>""", unsafe_allow_html=True)
-
-        rr_msg = "✅ Excellent R:R (>2:1)" if rr >= 2 else "🟡 Acceptable R:R (1-2:1)" if rr >= 1 else "❌ Bad R:R — Adjust Target"
-        st.markdown(f"**{rr_msg}**")
-
-    # Position sizing across portfolio
-    st.divider()
-    st.markdown("#### 🧮 Portfolio Allocation Guide")
-    alloc_data = {
-        "Risk Level":   ["Conservative","Moderate","Aggressive","YOLO (avoid)"],
-        "Risk per Trade":[  "0.5%",        "1-2%",     "3-5%",      ">5%"],
-        "Suitable for": ["Beginners","Most traders","Experienced","Not recommended"],
-        "Max Drawdown": ["~5%",       "~15%",        "~30%",       "100%+"],
-    }
-    st.dataframe(pd.DataFrame(alloc_data), use_container_width=True, hide_index=True)
-
-    st.divider()
-    st.markdown("#### 📐 Breakeven & Fees Calculator")
-    bro_col1, bro_col2 = st.columns(2)
-    with bro_col1:
-        brokerage_pct = st.number_input("Brokerage % (each side)", value=0.03, step=0.01, format="%.3f")
-        stt_pct       = st.number_input("STT % (on sell)", value=0.1, step=0.01)
-    with bro_col2:
-        total_brokerage = invest_r * (brokerage_pct/100) * 2
-        stt_cost        = invest_r * (stt_pct/100)
-        total_fees      = total_brokerage + stt_cost + 20  # +20 flat Zerodha style
-        breakeven_move  = (total_fees / (invest_r + 1e-9)) * 100
-        st.metric("Total Fees",    f"{CURRENCY}{total_fees:.2f}")
-        st.metric("Breakeven Move", f"{breakeven_move:.3f}%")
-        st.metric("Net Max Gain",   f"{CURRENCY}{max(0, max_gain_r - total_fees):.2f}")
-
-# ========== TAB 7: PRICE ALERTS (was tab5) ==========
-with tab7:
-    st.markdown("### 🔔 Price Alert System")
-    st.info("Alerts check hote hain jab bhi AI Agent scan karta hai (har 5 min).")
-
-    a1, a2 = st.columns(2)
-    with a1:
-        st.markdown("#### ➕ New Alert")
-        alert_market = st.selectbox("Market:", ACTIVE_MARKETS if ACTIVE_MARKETS else ["NSE"], key="alert_mkt")
-        ALERT_CUR = AGENT_CURRENCY[alert_market]
-        alert_sym  = st.selectbox("Stock:", MARKET_UNIVERSE[alert_market], key="alert_sym")
-        alert_cond = st.radio("Condition:", ["Above", "Below"], horizontal=True)
-        alert_tgt  = st.number_input(f"Target Price ({ALERT_CUR}):", value=500.0, step=1.0, min_value=0.1)
-        alert_note = st.text_input("Note (optional):", placeholder="e.g. Breakout level")
-
-        if st.button("🔔 Set Alert", type="primary"):
-            new_alert = {
-                'symbol': alert_sym, 'market': alert_market, 'condition': alert_cond,
-                'target': alert_tgt, 'note': alert_note,
-                'created': now.strftime('%H:%M:%S')
-            }
-            st.session_state.price_alerts.append(new_alert)
-            st.success(f"✅ Alert set: {alert_sym} {alert_cond} {ALERT_CUR}{alert_tgt:.2f}")
-
-    with a2:
-        st.markdown("#### 📋 Active Alerts")
-        if st.session_state.price_alerts:
-            for i, al in enumerate(st.session_state.price_alerts):
-                col_al1, col_al2 = st.columns([4,1])
-                with col_al1:
-                    icon = "⬆️" if al['condition']=="Above" else "⬇️"
-                    note = f" — {al['note']}" if al.get('note') else ""
-                    al_cur = AGENT_CURRENCY.get(al.get('market','NSE'), '₹')
-                    st.markdown(f"""<div class="card-alert">
-                    <span style="color:#ffaa00;font-weight:700">{al['symbol']}</span>
-                    {icon} <span style="color:#fff">{al_cur}{al['target']:.2f}</span>
-                    <span style="color:#555;font-size:0.78rem">{note} | Set: {al['created']}</span>
-                    </div>""", unsafe_allow_html=True)
-                with col_al2:
-                    if st.button("🗑️", key=f"del_alert_{i}"):
-                        st.session_state.price_alerts.pop(i)
-                        st.rerun()
-        else:
-            st.info("Koi active alert nahi hai.")
-
-    st.divider()
-    st.markdown("#### ✅ Triggered Alerts History")
-    if st.session_state.triggered_alerts:
-        trig_rows = [{"Stock":t['symbol'],"Condition":t['condition'],
-                      "Target":f"{AGENT_CURRENCY.get(t.get('market','NSE'),'₹')}{t['target']}",
-                      "Hit At":f"{AGENT_CURRENCY.get(t.get('market','NSE'),'₹')}{t.get('triggered_price','-')}",
-                      "Time":t.get('triggered_at','-'),
-                      "Note":t.get('note','')} for t in st.session_state.triggered_alerts]
-        st.dataframe(pd.DataFrame(trig_rows), use_container_width=True, hide_index=True)
-        if st.button("🗑️ Clear History"):
-            st.session_state.triggered_alerts = []
-            st.rerun()
-    else:
-        st.info("Koi alert abhi tak trigger nahi hua.")
-
-# ========== TAB 8: NEWS (was tab6) ==========
-with tab8:
-    st.markdown("### 📰 Live News & Sentiment")
-    news_market = st.selectbox("Market:", ACTIVE_MARKETS if ACTIVE_MARKETS else ["NSE"], key="news_mkt")
-    news_sel = st.selectbox("Stock:", MARKET_UNIVERSE[news_market], key="news_sel")
-
-    with st.spinner("Fetching news..."):
-        news_items = get_news(news_sel)
-
-    if news_items:
-        avg_sent = np.mean([n['score'] for n in news_items])
-        slabel   = "🟢 POSITIVE" if avg_sent > 60 else "🔴 NEGATIVE" if avg_sent < 40 else "🟡 NEUTRAL"
-        n1,n2 = st.columns(2)
-        n1.metric("Overall Sentiment", slabel, f"Score: {avg_sent:.0f}/100")
-        n2.metric("Articles Found",    len(news_items))
-        st.divider()
-        for n in news_items:
-            color = "#00ff88" if n['sentiment']=="POSITIVE" else "#ff4444" if n['sentiment']=="NEGATIVE" else "#ffaa00"
-            icon  = "🟢" if n['sentiment']=="POSITIVE" else "🔴" if n['sentiment']=="NEGATIVE" else "🟡"
-            st.markdown(f"""<div class="news-card">
-            <div style="display:flex;justify-content:space-between;margin-bottom:5px">
-              <span style="color:{color};font-weight:600;font-size:0.78rem">{icon} {n['sentiment']}</span>
-              <span style="color:#444;font-size:0.73rem">{n['time']}</span>
-            </div>
-            <div style="color:#c0cfe0;font-size:0.87rem;line-height:1.5">{n['title']}</div>
-            <a href="{n['link']}" target="_blank" style="color:#00d4ff;font-size:0.73rem;text-decoration:none">📎 Read more →</a>
-            </div>""", unsafe_allow_html=True)
-    else:
-        st.info(f"{news_sel} ke liye news nahi mili.")
-
-# ========== TAB 9: BACKTEST (was tab7) ==========
-with tab9:
-    st.markdown("### 🧪 Backtesting Engine")
-    st.info("Strategy: RSI < 45 + Price > SMA50 + MACD Bullish + Volume > 1.3x | 1 Year Data")
-
-    bt1, bt2 = st.columns(2)
-    with bt1:
-        bt_market = st.selectbox("Market:", ACTIVE_MARKETS if ACTIVE_MARKETS else ["NSE"], key="bt_mkt")
-        bt_stk = st.selectbox("Stock:", MARKET_UNIVERSE[bt_market], key="bt_sel")
-        bt_sl  = st.slider("Stop Loss %",  1.0, 10.0, 3.0, 0.5)
-        bt_tg  = st.slider("Target %",     2.0, 25.0, 8.0, 0.5)
-    with bt2:
-        st.markdown("#### Strategy Logic")
-        st.markdown("""
-        - **Entry:** RSI<45 + Price>SMA50 + MACD cross + Vol 1.3x
-        - **Exit:** Target hit / Stop Loss / 20-day timeout
-        - **Universe:** 1 year historical OHLCV
-        """)
-
-    if st.button("▶️ Run Backtest", type="primary"):
-        with st.spinner("Running backtest..."):
-            try:
-                df_bt = yf.Ticker(bt_stk).history(period="1y")
-                if df_bt is not None and len(df_bt) >= 100:
-                    df_bt = compute_indicators(df_bt, "Swing").dropna()
-                    trades_bt = []
-                    in_t = False; ep = 0; ei = 0
-                    for i in range(50, len(df_bt)):
-                        row = df_bt.iloc[i]
-                        p   = row['Close']
-                        if not in_t:
-                            if (row['RSI']<45 and p>row['SMA_50'] and
-                                row['MACD']>row['MacdSig'] and row['Volume']>row['Vol_SMA']*1.3):
-                                in_t=True; ep=p; ei=i
-                        else:
-                            pct = (p-ep)/ep; days = i-ei
-                            if pct >= bt_tg/100:
-                                trades_bt.append({'type':'WIN','pnl':pct,'days':days}); in_t=False
-                            elif pct <= -bt_sl/100:
-                                trades_bt.append({'type':'LOSS','pnl':pct,'days':days}); in_t=False
-                            elif days >= 20:
-                                trades_bt.append({'type':'TIMEOUT','pnl':pct,'days':days}); in_t=False
-
-                    if trades_bt:
-                        total = len(trades_bt)
-                        wins  = len([t for t in trades_bt if t['type']=='WIN'])
-                        losses= len([t for t in trades_bt if t['type']=='LOSS'])
-                        pnls  = [t['pnl']*100 for t in trades_bt]
-                        wr    = wins/total*100
-                        avg_d = np.mean([t['days'] for t in trades_bt])
-                        tot_pnl = sum(pnls)
-                        max_dd  = min(pnls)
-
-                        r1,r2,r3,r4,r5 = st.columns(5)
-                        r1.metric("Trades",   total)
-                        r2.metric("Win Rate", f"{wr:.1f}%", f"{wins}W / {losses}L")
-                        r3.metric("Total P&L",f"{tot_pnl:+.1f}%")
-                        r4.metric("Avg Days", f"{avg_d:.0f}")
-                        r5.metric("Max Loss", f"{max_dd:.1f}%")
-
-                        colors_bt = ['#00ff88' if p>=0 else '#ff4444' for p in pnls]
-                        fig_bt = go.Figure(go.Bar(
-                            x=list(range(1,len(pnls)+1)), y=pnls,
-                            marker_color=colors_bt, name="P&L%"))
-                        fig_bt.update_layout(
-                            template='plotly_dark', paper_bgcolor='#0a0e1a', plot_bgcolor='#0d1520',
-                            height=300, title=f"{bt_stk} — Trade P&L",
-                            margin=dict(l=8,r=8,t=38,b=8), font=dict(color='#7a8fa6',size=11),
-                            xaxis=dict(gridcolor='rgba(255,255,255,0.04)',showgrid=True),
-                            yaxis=dict(gridcolor='rgba(255,255,255,0.04)',showgrid=True),
-                            shapes=[dict(type='line', xref='paper', yref='y',
-                                         x0=0, x1=1, y0=0, y1=0,
-                                         line=dict(color='#ffffff44', width=1))]
-                        )
-                        st.plotly_chart(fig_bt, use_container_width=True)
-
-                        cum = np.cumsum(pnls)
-                        fig_cum = go.Figure(go.Scatter(
-                            x=list(range(1,len(cum)+1)), y=cum,
-                            fill='tozeroy', line=dict(color='#00d4ff',width=2),
-                            fillcolor='rgba(0,212,255,0.08)'))
-                        fig_cum.update_layout(
-                            template='plotly_dark', paper_bgcolor='#0a0e1a', plot_bgcolor='#0d1520',
-                            height=240, title="Cumulative P&L Curve",
-                            margin=dict(l=8,r=8,t=38,b=8), font=dict(color='#7a8fa6',size=11),
-                            xaxis=dict(gridcolor='rgba(255,255,255,0.04)',showgrid=True),
-                            yaxis=dict(gridcolor='rgba(255,255,255,0.04)',showgrid=True),
-                        )
-                        st.plotly_chart(fig_cum, use_container_width=True)
-                    else:
-                        st.warning("Enough trades generate nahi hue. Different stock try karo.")
-                else:
-                    st.warning("Data load nahi hua.")
-            except Exception as e:
-                st.error(f"Backtest error: {e}")
-
-# ========== TAB 10: PORTFOLIO (3 AGENTS) ==========
-with tab10:
-    st.markdown("### 💼 Live Portfolio — All 3 AI Agents")
-
-    for mkt in ACTIVE_MARKETS:
-        agent = st.session_state[AGENT_KEYS[mkt]]
-        cur   = AGENT_CURRENCY[mkt]
-        icon  = {"NSE":"🇮🇳","Crypto":"🪙","US":"🇺🇸"}[mkt]
-
-        inv = sum(agent['entry_price'].get(k, 0) * q for k, q in agent['positions'].items() if q > 0)
-        val = agent['balance'] + inv
-        pnl_ = val - 100000.0
-        open_p = len([q for q in agent['positions'].values() if q > 0])
-
-        st.markdown(f"## {icon} {mkt} Agent")
-        p1,p2,p3,p4 = st.columns(4)
-        p1.metric("Total Value", f"{cur}{val:,.2f}", f"{'+' if pnl_>=0 else ''}{pnl_:,.2f}")
-        p2.metric("Cash",        f"{cur}{agent['balance']:,.2f}")
-        p3.metric("P&L %",       f"{pnl_/1000:+.2f}%")
-        p4.metric("Positions",   open_p)
-
-        active = {k:q for k,q in agent['positions'].items() if q>0}
-        if active:
-            st.markdown("##### 📂 Open Positions")
-            rows_p = []
-            for pos_key, q in active.items():
-                stk    = pos_key.split("__")[0]
-                pmode  = agent['entry_mode'].get(pos_key, '-')
-                sl_pct_disp, tg_pct_disp = RISK_PARAMS.get(pmode, (0.03, 0.08))
-                entry  = agent['entry_price'].get(pos_key, 0)
-                high   = agent['highest_price'].get(pos_key, entry)
-                trail  = high*(1 - sl_pct_disp)
-                tg_px  = entry*(1 + tg_pct_disp)
-                rows_p.append({"Stock":stk, "Mode":pmode, "Qty":q,
-                                f"Entry({cur})":f"{entry:.2f}",
-                                f"TrailSL({cur})":f"{trail:.2f}",
-                                f"Target({cur})":f"{tg_px:.2f}",
-                                f"Value({cur})":f"{q*entry:,.0f}"})
-            st.dataframe(pd.DataFrame(rows_p), use_container_width=True, hide_index=True)
-        else:
-            st.caption("Koi open position nahi hai abhi.")
-
-        with st.expander(f"📋 {mkt} — Full Trade Log"):
-            if agent['trade_log']:
-                log_display = []
-                for t in agent['trade_log'][-50:]:
-                    log_display.append({
-                        "Time": t.get('time','-'), "Mode": t.get('mode','-'),
-                        "Stock": t.get('stock','-'), "Action": t.get('action','-'),
-                        f"Price({cur})": f"{t.get('price',0):.2f}",
-                        "Qty": t.get('qty','-'),
-                        "P&L": f"{cur}{t.get('pnl',0):+.2f}" if 'pnl' in t else "-",
-                    })
-                st.dataframe(pd.DataFrame(log_display), use_container_width=True, hide_index=True)
-            else:
-                st.caption("Abhi koi trade nahi hua.")
-
-        sells = [t for t in agent['trade_log'] if t.get('action')=='SELL']
-        if sells:
-            cumulative = 100000 + np.cumsum([t.get('pnl',0) for t in sells])
-            fig_eq = go.Figure(go.Scatter(
-                y=cumulative, mode='lines', line=dict(color='#00d4ff',width=2),
-                fill='tozeroy', fillcolor='rgba(0,212,255,0.07)'))
-            fig_eq.update_layout(
-                template='plotly_dark', paper_bgcolor='#0a0e1a', plot_bgcolor='#0d1520',
-                height=220, title=f"{mkt} Equity Curve",
-                margin=dict(l=8,r=8,t=38,b=8), font=dict(color='#7a8fa6',size=11),
-                xaxis=dict(gridcolor='rgba(255,255,255,0.04)',showgrid=True,title="Trades"),
-                yaxis=dict(gridcolor='rgba(255,255,255,0.04)',showgrid=True,title=f"Value ({cur})"),
-            )
-            st.plotly_chart(fig_eq, use_container_width=True)
-
-        st.divider()
-
-    if st.button("🔁 Reset ALL Portfolios", type="secondary"):
-        st.session_state.agent_nse    = make_agent_s
+  
