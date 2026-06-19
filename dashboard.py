@@ -2121,8 +2121,9 @@ with tab5:
     st.markdown("### 📈 F&O Options Chain")
     fo_market = st.selectbox("Market:", ACTIVE_MARKETS if ACTIVE_MARKETS else ["NSE"], key="fo_market")
 
-    fo_stocks_nse = ["NIFTY", "BANKNIFTY", "RELIANCE.NS", "TCS.NS", "INFY.NS", "TATAMOTORS.NS", "SBIN.NS", "KOTAKBANK.NS", "HCLTECH.NS", "BHARTIARTL.NS", "AXISBANK.NS"]
-    fo_stocks_us  = ["AAPL", "TSLA", "NVDA", "AMZN", "MSFT", "GOOGL", "AMD", "META"]
-    fo_stocks_crypto = ["BTC-USD", "ETH-USD"]
+    nse_list = ["NIFTY", "BANKNIFTY", "RELIANCE.NS", "TCS.NS", "INFY.NS", "TATAMOTORS.NS", "SBIN.NS", "KOTAKBANK.NS", "HCLTECH.NS", "BHARTIARTL.NS", "AXISBANK.NS"]
+    us_list  = ["AAPL", "TSLA", "NVDA", "AMZN", "MSFT", "GOOGL", "AMD", "META"]
+    cr_list  = ["BTC-USD", "ETH-USD"]
 
-    fo_stocks = fo_stock
+    fo_stocks = nse_list
+    if fo_market 
