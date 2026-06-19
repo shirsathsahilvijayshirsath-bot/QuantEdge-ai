@@ -2127,3 +2127,60 @@ with tab5:
 
     fo_stocks = nse_list
     if fo_market 
+# ========== TAB 5: OPTIONS CHAIN ==========
+with tab5:
+    st.markdown("### 📈 F&O Options Chain")
+    fo_market = st.selectbox("Market:", ACTIVE_MARKETS if ACTIVE_MARKETS else ["NSE"], key="fo_market")
+
+    # Stock lists
+    nse_list = ["NIFTY", "BANKNIFTY", "RELIANCE.NS", "TCS.NS", "INFY.NS", "TATAMOTORS.NS", "SBIN.NS", "KOTAKBANK.NS", "HCLTECH.NS", "BHARTIARTL.NS", "AXISBANK.NS"]
+    us_list  = ["AAPL", "TSLA", "NVDA", "AMZN", "MSFT", "GOOGL", "AMD", "META"]
+    cr_list  = ["BTC-USD", "ETH-USD"]
+
+    # Logic to select stock list based on market
+    if fo_market == "NSE":
+        fo_stocks = nse_list
+    elif fo_market == "US":
+        fo_stocks = us_list
+    else:
+        fo_stocks = cr_list
+
+    fo_sel = st.selectbox("Select Stock/Index:", fo_stocks)
+    fo_sym = fo_sel.replace("NIFTY","^NSEI").replace("BANKNIFTY","^NSEBANK")
+    
+    with st.spinner("Options data fetch ho rahi hai..."):
+        chain, pcr, expiry = get_options_data(fo_sym)
+    
+    if chain is not None and pcr is not None:
+        pc1, pc2, pc3 = st.columns(3)
+        pcr_color   = "🟢" if pcr < 0.8 else "🔴" if pcr > 1.2 else "🟡"
+        pcr_signal  = "Bullish (Calls dominant)" if pcr < 0.8 else "Bearish (Puts dominant)" if pcr > 1.2 else "Neutral"
+        pc1.metric("Put/Call Ratio (PCR)", f"{pcr_color} {pcr}")
+        pc2.metric("PCR Signal", pcr_signal)
+        pc3.metric("Expiry", str(expiry))
+        st.info("**PCR Guide:** PCR < 0.8 = Bullish | PCR 0.8-1.2 = Neutral | PCR > 1.2 = Bearish")
+        
+        # OI Chart
+        if 'Call OI' in chain.columns and 'Put OI' in chain.columns:
+            top_chain = chain.nlargest(15, 'Call OI').sort_values('Strike')
+            fig_oi = go.Figure()
+            fig_oi.add_trace(go.Bar(x=top_chain['Strike'], y=top_chain['Call OI'],
+                             name='Call OI', marker_color='#00ff88', opacity=0.8))
+            fig_oi.add_trace(go.Bar(x=top_chain['Strike'], y=top_chain['Put OI'],
+                             name='Put OI', marker_color='#ff4444', opacity=0.8))
+            fig_oi.update_layout(
+                template='plotly_dark', paper_bgcolor='#0a0e1a', plot_bgcolor='#0d1520',
+                height=320, barmode='group', title="Open Interest by Strike",
+                margin=dict(l=8,r=8,t=35,b=8), font=dict(color='#7a8fa6',size=11),
+                xaxis=dict(gridcolor='rgba(255,255,255,0.04)', showgrid=True),
+                yaxis=dict(gridcolor='rgba(255,255,255,0.04)', showgrid=True),
+            )
+            st.plotly_chart(fig_oi, use_container_width=True)
+            
+        st.markdown("#### 📋 Options Chain Table")
+        display_cols = [c for c in ['Strike','Call Price','Call OI','Call Vol',
+                                   'Put Price','Put OI','Put Vol'] if c in chain.columns]
+        show = chain[display_cols].sort_values('Strike').reset_index(drop=True)
+        st.dataframe(show.head(20), use_container_width=True, hide_index=True)
+    else:
+        st.warning(f"**{fo_sel}** ke liye options data nahi mila.")
