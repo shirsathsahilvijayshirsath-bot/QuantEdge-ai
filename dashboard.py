@@ -2116,24 +2116,6 @@ with tab4:
         💡 <strong>Tip:</strong> Sidebar mein 'AI Agent ACTIVE' on rakho. Agent har 5 min mein scan karega aur jab trades close honge (target/SL hit), tab leaderboard populate hoga.
         </div>""", unsafe_allow_html=True)
 
-# ========== TAB 5: OPTIONS CHAIN (was tab3) ==========
-with tab5:
-    st.markdown("### 📈 F&O Options Chain")
-    fo_market = st.selectbox("Market:", ACTIVE_MARKETS if ACTIVE_MARKETS else ["NSE"], key="fo_market")
-
-    nse_list = ["NIFTY", "BANKNIFTY", "RELIANCE.NS", "TCS.NS", "INFY.NS", "TATAMOTORS.NS", "SBIN.NS", "KOTAKBANK.NS", "HCLTECH.NS", "BHARTIARTL.NS", "AXISBANK.NS"]
-    us_list  = ["AAPL", "TSLA", "NVDA", "AMZN", "MSFT", "GOOGL", "AMD", "META"]
-    cr_list  = ["BTC-USD", "ETH-USD"]
-
-    fo_stocks = nse_list
-    if fo_market     # Logic to select stock list based on market
-    if fo_market == "NSE":  # <--- Yaha colon (:) zaroori hai
-        fo_stocks = nse_list
-    elif fo_market == "US": # <--- Yaha bhi
-        fo_stocks = us_list
-    else:                   # <--- Yaha bhi
-        fo_stocks = cr_list
-
 # ========== TAB 5: OPTIONS CHAIN ==========
 with tab5:
     st.markdown("### 📈 F&O Options Chain")
