@@ -2126,7 +2126,14 @@ with tab5:
     cr_list  = ["BTC-USD", "ETH-USD"]
 
     fo_stocks = nse_list
-    if fo_market 
+    if fo_market     # Logic to select stock list based on market
+    if fo_market == "NSE":  # <--- Yaha colon (:) zaroori hai
+        fo_stocks = nse_list
+    elif fo_market == "US": # <--- Yaha bhi
+        fo_stocks = us_list
+    else:                   # <--- Yaha bhi
+        fo_stocks = cr_list
+
 # ========== TAB 5: OPTIONS CHAIN ==========
 with tab5:
     st.markdown("### 📈 F&O Options Chain")
