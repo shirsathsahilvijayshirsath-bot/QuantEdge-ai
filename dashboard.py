@@ -2047,20 +2047,19 @@ with tab3:
             colors_p  = ['#00ff88' if pred_results[h]['direction']=="UP" else '#ff4444' for h in horizons]
             labels_p  = [f"{h}D" for h in horizons]
 
-            fig_pred = make_subplots(rows=1, cols=2,
-                subplot_titles=["Predicted Return %", "Model Confidence %"])
-            fig_pred.add_trace(go.Bar(x=labels_p, y=rets, marker_color=colors_p, name="Return %"), row=1, col=1)
-            fig_pred.add_trace(go.Bar(x=labels_p, y=confs, marker_color='#00d4ff', name="Confidence %"), row=1, col=2)
-            gs = dict(gridcolor='rgba(255,255,255,0.04)', showgrid=True)
-            fig_pred.update_layout(
-                template='plotly_dark', paper_bgcolor='#0a0e1a', plot_bgcolor='#0d1520',
-                height=280, showlegend=False, margin=dict(l=8,r=8,t=35,b=8),
+                fig_pred.update_layout(
+                template='plotly_dark',
+                paper_bgcolor='#0a0e1a',
+                plot_bgcolor='#0d1520',
+                height=280,
+                showlegend=False,
+                margin=dict(l=8,r=8,t=35,b=8),
                 font=dict(color='#7a8fa6',size=11),
                 xaxis=gs, xaxis2=gs, yaxis=gs, yaxis2=gs
             )
-                        fig_pred.update_layout(...)
             fig_pred.add_hline(y=0, line_color='rgba(255, 255, 255, 0.2)')
             st.plotly_chart(fig_pred, use_container_width=True)
+
  
 
             # Disclaimer
