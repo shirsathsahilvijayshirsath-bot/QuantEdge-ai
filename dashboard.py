@@ -2058,8 +2058,10 @@ with tab3:
                 font=dict(color='#7a8fa6',size=11),
                 xaxis=gs, xaxis2=gs, yaxis=gs, yaxis2=gs
             )
-             fig_pred.add_hline(y=0, line_color='rgba(255, 255, 255, 0.2)')
-             st.plotly_chart(fig_pred, use_container_width=True)
+                        fig_pred.update_layout(...)
+            fig_pred.add_hline(y=0, line_color='rgba(255, 255, 255, 0.2)')
+            st.plotly_chart(fig_pred, use_container_width=True)
+ 
 
             # Disclaimer
             st.markdown("""<div class="ai-box">
