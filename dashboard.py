@@ -2134,4 +2134,4 @@ with tab4:
         elif rank_pnl >= 10:
             rank_label, rank_class = "🥈 Pro Trader", "leaderboard-silver"
         elif rank_pnl >= 0:
-            rank_label, rank_class = "🥉 Good Trader", "leaderboard-bronze
+            rank_label, rank_class = "🥉 Good Trader", "leaderboard-bronze"
