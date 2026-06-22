@@ -1997,7 +1997,7 @@ with tab2:
         st.markdown(f'<div class="ai-box" style="font-size:0.93rem;padding:14px">🤖 {expl}</div>', unsafe_allow_html=True)
     else:
         st.warning("Data load nahi hua. Dobara try karo.")
-
+"
 # ========== TAB 3: PRICE PREDICTION ==========
 with tab3:
     st.markdown("### 🔮 AI Price Prediction — Next 1, 3, 5 Days")
@@ -2047,7 +2047,12 @@ with tab3:
             colors_p  = ['#00ff88' if pred_results[h]['direction']=="UP" else '#ff4444' for h in horizons]
             labels_p  = [f"{h}D" for h in horizons]
 
-                fig_pred.update_layout(
+            fig_pred = make_subplots(rows=1, cols=2, subplot_titles=["Predicted Return %", "Model Confidence %"])
+            fig_pred.add_trace(go.Bar(x=labels_p, y=rets, marker_color=colors_p, name="Return %"), row=1, col=1)
+            fig_pred.add_trace(go.Bar(x=labels_p, y=confs, marker_color='#00d4ff', name="Confidence %"), row=1, col=2)
+            
+            gs = dict(gridcolor='rgba(255,255,255,0.04)', showgrid=True)
+            fig_pred.update_layout(
                 template='plotly_dark',
                 paper_bgcolor='#0a0e1a',
                 plot_bgcolor='#0d1520',
@@ -2059,8 +2064,6 @@ with tab3:
             )
             fig_pred.add_hline(y=0, line_color='rgba(255, 255, 255, 0.2)')
             st.plotly_chart(fig_pred, use_container_width=True)
-
- 
 
             # Disclaimer
             st.markdown("""<div class="ai-box">
@@ -2093,7 +2096,7 @@ with tab3:
                     st.dataframe(pd.DataFrame(scan_results), use_container_width=True, hide_index=True)
         else:
             st.warning("Prediction model nahi bana — data insufficient ya fetch error. Dobara try karo.")
-
+        
 # ========== TAB 4: LEADERBOARD & WEEKLY WIN-RATE ==========
 with tab4:
     st.markdown("### 🏆 AI Agent Performance — Win-Rate & Leaderboard")
