@@ -892,11 +892,32 @@ def chat_assistant_respond(query, active_markets):
         return "\n".join(reply) if found_any else "Abhi koi open position nahi hai."
     return "Main yeh sawal samajh nahi paya 🤔 Try karo:\n\n- *\"RELIANCE ka analysis?\"*\n- *\"Portfolio kaisa chal raha hai?\"*\n- *\"Win rate kya hai?\"*\n- *\"Kaunsa sector garam hai?\"*\n- *\"Open positions dikhao\"*"
 
-def run_ai_agent_for_market(market, mode_, min_score_threshold, max_alloc, telegram_enabled, mtf_confirm_on=True, dd_on=True, dd_streak=4, dd_hours=12, compounding=False):
-    agent, currency, universe = st.session_state[AGENT_KEYS[market]], AGENT_CURRENCY[market], MARKET_UNIVERSE[market]
-    sl_pct, tg_pct = RISK_PARAMS[mode_]
-    can_trade_now, is_bull = market_can_trade(market, mode_), get_market_regime(MARKET_BENCH[market], mode_)[0]
-    is_paused = False
+    # ================= DRAWDOWN PROTECTION =================
+def check_drawdown_protection(agent, mode_, streak_limit, pause_hours):
+    if agent.get('paused_until'):
+        try:
+            paused_until_dt = datetime.fromisoformat(agent['paused_until'])
+            if now < paused_until_dt:
+                return True, agent.get('pause_reason', 'Drawdown protection active')
+            else:
+                agent['paused_until'] = None
+                agent['pause_reason'] = ""
+        except:
+            agent['paused_until'] = None
+
+    # Check recent trades that have a P&L
+    sells = [t for t in agent['trade_log'] if 'pnl' in t and t.get('mode') == mode_]
+    if len(sells) < streak_limit:
+        return False, ""
+
+    recent = sells[-streak_limit:]
+    if all(t['pnl'] <= 0 for t in recent):
+        pause_until = now + timedelta(hours=pause_hours)
+        agent['paused_until'] = pause_until.isoformat()
+        agent['pause_reason'] = f"{streak_limit} consecutive losses in {mode_} — auto-paused for {pause_hours}h"
+        return True, agent['pause_reason']
+
+    return False, ""
     
     if dd_on:
         is_paused, pause_reason = check_drawdown_protection(agent, mode_, dd_streak, dd_hours)
