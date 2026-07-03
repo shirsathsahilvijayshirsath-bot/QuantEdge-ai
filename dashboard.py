@@ -553,11 +553,14 @@ with tab17:
     kc1, kc2, kc3 = st.columns(3)
     for mkt, col in [("NSE", kc1), ("Crypto", kc2), ("US", kc3)]:
         agent = st.session_state[AGENT_KEYS[mkt]]
-        with col:
-            st.markdown(f"**{mkt}**")
-            for md in ["Intraday", "Swing"]:
-                sells = [t for t in agent['trade_log'] if t.get('mode') == md and 'pnl' in t]
-                st.caption(f"{md}: **{calc_kelly_fraction(agent, md)*100:.1f}%** (WR: {len([t for t in sells if t['pnl']>0])/len(sells)*100:.0f}% if sells else 'No trades')")
+                   with col:
+                st.markdown(f"**{mkt}**")
+                for md in ["Intraday", "Swing"]:
+                    sells = [t for t in agent['trade_log'] if t.get('mode') == md and 'pnl' in t]
+                    # Safe division: Pehle check karo trades hain ya nahi
+                    wr_text = f"{len([t for t in sells if t['pnl']>0])/len(sells)*100:.0f}%" if sells else "No trades"
+                    st.caption(f"{md}: **{calc_kelly_fraction(agent, md)*100:.1f}%** (WR: {wr_text})")
+ 
     
     st.divider()
     bt_market = st.selectbox("Market:", ACTIVE_MARKETS if ACTIVE_MARKETS else ["NSE"], key="backtest_mkt")
