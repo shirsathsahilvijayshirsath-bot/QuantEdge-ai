@@ -31,17 +31,6 @@ st.markdown("""
     .main-header p  { color: #7a8fa6; font-size: 0.8rem; margin: 3px 0 0 0; letter-spacing: 1px; }
     .card-buy  { background:linear-gradient(135deg,#003d1f,#005a2b); border:1px solid #00ff8844; border-left:4px solid #00ff88; border-radius:8px; padding:12px 14px; margin:5px 0; }
     .card-sell { background:linear-gradient(135deg,#3d0000,#5a0000); border:1px solid #ff444444; border-left:4px solid #ff4444; border-radius:8px; padding:12px 14px; margin:5px 0; }
-    .card-hold { background:linear-gradient(135deg,#1a1f2e,#222840); border:1px solid #ffffff15; border-left:4px solid #555; border-radius:8px; padding:12px 14px; margin:5px 0; }
-    .card-info { background:#0d1b2a; border:1px solid #00d4ff22; border-radius:10px; padding:14px; margin:6px 0; }
-    .card-alert{ background:linear-gradient(135deg,#1a1400,#2a2000); border:1px solid #ffaa0044; border-left:4px solid #ffaa00; border-radius:8px; padding:12px 14px; margin:5px 0; }
-    .ai-box    { background:#0d1520; border:1px solid #00d4ff22; border-radius:8px; padding:12px 16px; font-size:0.85rem; color:#a0b4c8; font-style:italic; }
-    .sr-buy    { color:#00ff88; font-weight:700; }
-    .sr-sell   { color:#ff4444; font-weight:700; }
-    .sr-neutral{ color:#ffaa00; font-weight:600; }
-    .news-card { background:#0d1b2a; border:1px solid #ffffff10; border-radius:8px; padding:10px 12px; margin:5px 0; }
-    .leaderboard-gold   { background:linear-gradient(135deg,#2a1f00,#3d2e00); border-left:4px solid #ffd700; border-radius:8px; padding:10px 14px; margin:4px 0; }
-    .leaderboard-silver { background:linear-gradient(135deg,#1a1f2e,#222840); border-left:4px solid #c0c0c0; border-radius:8px; padding:10px 14px; margin:4px 0; }
-    .leaderboard-bronze { background:linear-gradient(135deg,#1a1000,#2a1800); border-left:4px solid #cd7f32; border-radius:8px; padding:10px 14px; margin:4px 0; }
     .pred-box  { background:#0d1b2a; border:1px solid #00d4ff22; border-radius:10px; padding:16px; text-align:center; }
 </style>
 """, unsafe_allow_html=True)
@@ -73,16 +62,11 @@ TOKEN   = "8629163881:AAHrO4n9KpDNT0tMR1DoRvXeJeZ5VEIWCCA"
 CHAT_ID = "7602586865"
 
 # ================= MARKET UNIVERSES =================
-NSE_STOCKS = ["RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS","HINDUNILVR.NS","HDFC.NS","SBIN.NS","BHARTIARTL.NS","KOTAKBANK.NS","ITC.NS","LT.NS","AXISBANK.NS","ASIANPAINT.NS","MARUTI.NS","TITAN.NS","ULTRACEMCO.NS","WIPRO.NS","SUNPHARMA.NS","TECHM.NS","NESTLEIND.NS","BAJFINANCE.NS","POWERGRID.NS","NTPC.NS","ONGC.NS","JSWSTEEL.NS","TATASTEEL.NS","HCLTECH.NS","M&M.NS","BAJAJFINSV.NS","ADANIENT.NS","ADANIPORTS.NS","ADANIGREEN.NS","DMART.NS","SIEMENS.NS","PIDILITIND.NS","HAVELLS.NS","MARICO.NS","DABUR.NS","GODREJCP.NS","MUTHOOTFIN.NS","CHOLAFIN.NS","RECLTD.NS","PFC.NS","IRCTC.NS","INDHOTEL.NS","TRENT.NS","VEDL.NS","HINDALCO.NS","COALINDIA.NS","GRASIM.NS","HEROMOTOCO.NS","BAJAJ-AUTO.NS","EICHERMOT.NS","TVSMOTOR.NS","TATAMOTORS.NS","MOTHERSON.NS","BOSCHLTD.NS","MRF.NS","APOLLOHOSP.NS","ZOMATO.NS","NYKAA.NS","PAYTM.NS","POLICYBZR.NS","DELHIVERY.NS","HDFCLIFE.NS","SBILIFE.NS","ICICIGI.NS","MFSL.NS","STARHEALTH.NS","DLF.NS","GODREJPROP.NS","OBEROIRLTY.NS","PHOENIXLTD.NS","PRESTIGE.NS","PERSISTENT.NS","LTIM.NS","TATAELXSI.NS","MPHASIS.NS","COFORGE.NS","HAPPSTMNDS.NS","NETWEB.NS","KPIT.NS","CYIENT.NS","MASTEK.NS","SUZLON.NS","CESC.NS","TORNTPOWER.NS","TATAPOWER.NS","ADANIPOWER.NS","HAL.NS","BEL.NS","BHEL.NS","COCHINSHIP.NS","MAZDOCK.NS","GRSE.NS","TORNTPHARM.NS","ZYDUSLIFE.NS","AUROPHARMA.NS","ALKEM.NS","IPCALAB.NS","MAXHEALTH.NS","FORTIS.NS","METROPOLIS.NS","LALPATHLAB.NS","THYROCARE.NS","BRITANNIA.NS","VBL.NS","JUBLFOOD.NS","DEVYANI.NS","SAPPHIRE.NS","ABB.NS","CUMMINSIND.NS","THERMAX.NS","BHARAT FORGE.NS","KALYANKJIL.NS","SRF.NS","AARTIIND.NS","DEEPAKNTR.NS","PIIND.NS","UPL.NS","BANDHANBNK.NS","FEDERALBNK.NS","IDFCFIRSTB.NS","RBLBANK.NS"]
-CRYPTO = ["BTC-USD","ETH-USD","BNB-USD","SOL-USD","XRP-USD","ADA-USD","AVAX-USD","DOGE-USD","MATIC-USD","DOT-USD","LINK-USD","UNI-USD","ATOM-USD","LTC-USD","BCH-USD","ALGO-USD","XLM-USD","FIL-USD","NEAR-USD","APT-USD","ARB-USD","OP-USD","INJ-USD","SUI-USD","TIA-USD"]
-US_STOCKS = ["AAPL","MSFT","GOOGL","AMZN","NVDA","TSLA","META","AMD","NFLX","JPM","BAC","V","WMT","DIS","PLTR","UBER","COIN","SNOW","SHOP","CRWD","ABNB","RBLX","HOOD","ARM","SMCI","MU","INTC","QCOM","AVGO","TSM","BABA","JD","PDD","NIO","XPEV","LI","RIVN","LCID","F","GM","XOM","CVX","COP","SLB","HAL","GS","MS","C","WFC","AXP","PFE","MRNA","JNJ","ABBV","LLY","UNH","CVS","CI","HUM","ANTM"]
+NSE_STOCKS = ["RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS","HINDUNILVR.NS","HDFC.NS","SBIN.NS","BHARTIARTL.NS","KOTAKBANK.NS","ITC.NS","LT.NS","AXISBANK.NS","ASIANPAINT.NS","MARUTI.NS","TITAN.NS","ULTRACEMCO.NS","WIPRO.NS","SUNPHARMA.NS","TECHM.NS","NESTLEIND.NS","BAJFINANCE.NS","POWERGRID.NS","NTPC.NS","ONGC.NS","JSWSTEEL.NS","TATASTEEL.NS","HCLTECH.NS","M&M.NS","BAJAJFINSV.NS"]
+CRYPTO = ["BTC-USD","ETH-USD","BNB-USD","SOL-USD","XRP-USD","ADA-USD","AVAX-USD","DOGE-USD","MATIC-USD","DOT-USD","LINK-USD"]
+US_STOCKS = ["AAPL","MSFT","GOOGL","AMZN","NVDA","TSLA","META","AMD","NFLX","JPM","BAC","V","WMT","DIS","PLTR","UBER"]
 
 NIFTY_INDEX, SP500_INDEX, BTC_BENCH = "^NSEI", "^GSPC", "BTC-USD"
-SECTOR_MAP = {
-    "NSE": {"IT": ["INFY.NS","TCS.NS","HCLTECH.NS","WIPRO.NS","TECHM.NS"], "Banking": ["HDFCBANK.NS","ICICIBANK.NS","SBIN.NS","KOTAKBANK.NS","AXISBANK.NS"], "Auto": ["TATAMOTORS.NS","MARUTI.NS","M&M.NS","BAJAJ-AUTO.NS","EICHERMOT.NS"]},
-    "Crypto": {"Layer1": ["BTC-USD","ETH-USD","SOL-USD","ADA-USD"], "Exchange/DeFi": ["BNB-USD","UNI-USD","LINK-USD"]},
-    "US": {"Big Tech": ["AAPL","MSFT","GOOGL","AMZN","META"], "Semiconductors": ["NVDA","AMD","MU","INTC","QCOM"]}
-}
 
 # ================= SESSION STATE =================
 def make_agent_state():
@@ -173,37 +157,10 @@ def compute_indicators(df, current_mode):
     df['BB_Up'], df['BB_Low'] = df['BB_Mid'] + df['BB_Std']*2, df['BB_Mid'] - df['BB_Std']*2
     df['BB_pct'] = (c - df['BB_Low']) / (df['BB_Up'] - df['BB_Low'] + 1e-9)
     df['ATR'] = (df['High'] - df['Low']).rolling(14).mean()
-    df['Stoch_K'] = ((c - df['Low'].rolling(14).min()) / (df['High'].rolling(14).max() - df['Low'].rolling(14).min() + 1e-9)) * 100
-    df['Stoch_D'] = df['Stoch_K'].rolling(3).mean()
     if current_mode == "Intraday":
         df['Date'] = df.index.date
         df['VWAP'] = df.groupby('Date').apply(lambda x: (x['Volume']*(x['High']+x['Low']+x['Close'])/3).cumsum() / (x['Volume'].cumsum()+1e-9)).reset_index(level=0, drop=True)
     return df.dropna()
-
-def get_sr_levels(df):
-    try:
-        df = df.tail(120)
-        h, l, c = df['High'].values, df['Low'].values, df['Close'].values
-        pivot = (h[-1] + l[-1] + c[-1]) / 3
-        return {"pivot": round(pivot, 2), "resistances": [round(2*pivot - l[-1], 2), round(pivot + (h[-1] - l[-1]), 2)], "supports": [round(2*pivot - h[-1], 2), round(pivot - (h[-1] - l[-1]), 2)], "current": round(c[-1], 2)}
-    except: return None
-
-@st.cache_data(ttl=900, show_spinner=False)
-def get_sector_performance(market, period="5d"):
-    results = []
-    for sector, symbols in SECTOR_MAP.get(market, {}).items():
-        changes = [(yf.Ticker(s).history(period=period)['Close'].iloc[-1]/yf.Ticker(s).history(period=period)['Close'].iloc[0]-1)*100 for s in symbols[:8] if not yf.Ticker(s).history(period=period).empty]
-        if changes: results.append({"sector": sector, "avg_change_pct": round(np.mean(changes), 2), "strength": "🔥 Hot" if np.mean(changes)>1 else "🧊 Cold"})
-    return sorted(results, key=lambda x: x['avg_change_pct'], reverse=True)
-
-@st.cache_data(ttl=1800, show_spinner=False)
-def calc_correlation(symbol_a, symbol_b, period="6mo"):
-    try:
-        df_a, df_b = yf.Ticker(symbol_a).history(period=period)['Close'].pct_change().dropna(), yf.Ticker(symbol_b).history(period=period)['Close'].pct_change().dropna()
-        df_a.index, df_b.index = df_a.index.tz_localize(None) if df_a.index.tz else df_a.index, df_b.index.tz_localize(None) if df_b.index.tz else df_b.index
-        merged = pd.concat([df_a, df_b], axis=1, join='inner')
-        return {"correlation": round(float(merged.iloc[:,0].corr(merged.iloc[:,1])), 3), "series": merged}
-    except: return None
 
 @st.cache_resource
 def get_model(symbol):
@@ -220,12 +177,6 @@ def get_model(symbol):
         mdl = GradientBoostingClassifier(n_estimators=100, max_depth=3).fit(sc.fit_transform(X), df['label'])
         return mdl, sc
     except: return None, None
-
-def news_sentiment_summary(symbol):
-    return 50, "NEUTRAL", 0
-
-def get_fundamentals(symbol):
-    return {"available": False, "fundamental_score": 50, "summary": "N/A"}
 
 def advanced_engine(symbol, df, current_mode):
     if df is None or len(df) < 100: return "HOLD", 0, 0, "Insufficient Data", []
@@ -255,10 +206,6 @@ def advanced_engine(symbol, df, current_mode):
         elif score <= -18: return "SELL", price, int(score), "Watching", signals
         return "HOLD", price, int(score), "Watching", signals
     except Exception as e: return "HOLD", 0, 0, str(e), []
-
-def ai_explain(symbol, signal, score, signals, price, currency="₹"):
-    if signal == "BUY": return f"**{symbol}** BUY signal. Score: {score}/100. Price: {currency}{price:.2f}"
-    return f"**{symbol}** {signal} zone. Score: {score}/100."
 
 def check_drawdown_protection(agent, mode_, streak_limit, pause_hours):
     if agent.get('paused_until'):
@@ -387,7 +334,7 @@ def predict_price(symbol):
     except: return None
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def backtest_strategy(symbol, strategy_name="intraday", period="1y"):
+def backtest_strategy(symbol, strategy_name="Swing", period="1y"):
     try:
         df = yf.Ticker(symbol).history(period=period)
         if df is None or len(df) < 100: return None
@@ -405,6 +352,19 @@ def backtest_strategy(symbol, strategy_name="intraday", period="1y"):
         wins = [t for t in trade_log if t['pnl'] > 0]
         return {'symbol': symbol, 'strategy': strategy_name, 'total_trades': len(trade_log), 'win_rate': round(len(wins)/len(trade_log)*100, 1) if trade_log else 0, 'total_pnl': round(sum(t['pnl'] for t in trade_log), 2), 'passed': len(wins)/len(trade_log) > 0.50 if trade_log else False}
     except: return None
+
+def check_alerts(alerts, current_prices):
+    triggered, remaining = [], []
+    for alert in alerts:
+        sym, cur = alert['symbol'], AGENT_CURRENCY.get(alert.get('market','NSE'), '₹')
+        price = current_prices.get(sym, 0)
+        if price == 0: remaining.append(alert); continue
+        hit = (alert['condition'] == "Above" and price >= alert['target']) or (alert['condition'] == "Below" and price <= alert['target'])
+        if hit:
+            triggered.append({**alert, 'triggered_price': price, 'triggered_at': now.strftime('%H:%M:%S')})
+            send_telegram(f"🔔 ALERT: {sym} {alert['condition']} {cur}{alert['target']:.2f}\nCurrent: {cur}{price:.2f}")
+        else: remaining.append(alert)
+    return triggered, remaining
 
 def play_alert_sound(kind="buy"):
     freq = "880,0,0.15);beep(1100,0.18,0.18" if kind=="buy" else "420,0,0.30"
@@ -434,6 +394,16 @@ if do_scan or manual_scan:
 
     if sound_alert_on and total_buys_this_scan > 0: play_alert_sound("buy")
     elif sound_alert_on and total_sells_this_scan > 0: play_alert_sound("sell")
+
+    all_current_prices = {}
+    for mkt, modes_dict in agent_results.items():
+        for md, results in modes_dict.items():
+            for stk, sig, sc, pr, msg, sigs in results:
+                if pr > 0: all_current_prices[stk] = pr
+    triggered, st.session_state.price_alerts = check_alerts(st.session_state.price_alerts, all_current_prices)
+    if triggered:
+        st.session_state.triggered_alerts.extend(triggered)
+        if sound_alert_on: play_alert_sound("buy")
 
 def agent_summary(market):
     agent = st.session_state[AGENT_KEYS[market]]
@@ -495,7 +465,7 @@ c2.metric("Alerts Set", len(st.session_state.price_alerts))
 c3.metric("AI Status", "🟢 LIVE" if st.session_state.agent_running else "⏸️ PAUSED")
 st.divider()
 
-tab1, tab2, tab3, tab4, tab10, tab16, tab17 = st.tabs(["🤖 AI Agent Radar", "📊 Chart + S&R", "🔮 Price Prediction", "🏆 Win-Rate & Leaderboard", "💼 Portfolio (3 Agents)", "🎯 Strategy Builder", "📊 Kelly + Honest Backtest"])
+tab1, tab3, tab10, tab16, tab17 = st.tabs(["🤖 AI Agent Radar", "🔮 Price Prediction", "💼 Portfolio (3 Agents)", "🎯 Strategy Builder", "📊 Kelly + Honest Backtest"])
 
 with tab1:
     st.markdown("### 🤖 Live Signals & Executions")
@@ -553,16 +523,14 @@ with tab17:
     kc1, kc2, kc3 = st.columns(3)
     for mkt, col in [("NSE", kc1), ("Crypto", kc2), ("US", kc3)]:
         agent = st.session_state[AGENT_KEYS[mkt]]
-                with col:
-                st.markdown(f"**{mkt}**")
-                for md in ["Intraday", "Swing"]:
-                    sells = [t for t in agent['trade_log'] if t.get('mode') == md and 'pnl' in t]
-                    # Safe division: Pehle check karo trades hain ya nahi
-                    wr_text = f"{len([t for t in sells if t['pnl']>0])/len(sells)*100:.0f}%" if sells else "No trades"
-                    st.caption(f"{md}: **{calc_kelly_fraction(agent, md)*100:.1f}%** (WR: {wr_text})")
-
- 
-       st.divider()
+        with col:
+            st.markdown(f"**{mkt}**")
+            for md in ["Intraday", "Swing"]:
+                sells = [t for t in agent['trade_log'] if t.get('mode') == md and 'pnl' in t]
+                wr_text = f"{len([t for t in sells if t['pnl']>0])/len(sells)*100:.0f}%" if sells else "No trades"
+                st.caption(f"{md}: **{calc_kelly_fraction(agent, md)*100:.1f}%** (WR: {wr_text})")
+    
+    st.divider()
     bt_market = st.selectbox("Market:", ACTIVE_MARKETS if ACTIVE_MARKETS else ["NSE"], key="backtest_mkt")
     bt_period = st.selectbox("Historical Period:", ["3mo", "6mo", "1y", "2y"], value="1y", key="backtest_period")
     if st.button("🚀 Run Full Backtest", type="primary"):
