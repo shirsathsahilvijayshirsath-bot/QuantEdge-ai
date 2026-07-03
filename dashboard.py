@@ -561,8 +561,7 @@ with tab17:
                     wr_text = f"{len([t for t in sells if t['pnl']>0])/len(sells)*100:.0f}%" if sells else "No trades"
                     st.caption(f"{md}: **{calc_kelly_fraction(agent, md)*100:.1f}%** (WR: {wr_text})")
  
-    
-    st.divider()
+       st.divider()
     bt_market = st.selectbox("Market:", ACTIVE_MARKETS if ACTIVE_MARKETS else ["NSE"], key="backtest_mkt")
     bt_period = st.selectbox("Historical Period:", ["3mo", "6mo", "1y", "2y"], value="1y", key="backtest_period")
     if st.button("🚀 Run Full Backtest", type="primary"):
