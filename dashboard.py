@@ -1137,3 +1137,5 @@ Next Steps:
 
 🚀 Ready to trade like an institution!
 """)
+# ================= QUANTEDGE AI v10.0 FEATURES =================
+add_v10_tabs()
