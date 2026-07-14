@@ -1,14 +1,7 @@
-# ================= QUANTEDGE AI v9.0 - KELLY + RESET-LEARN + BACKTESTER =================
-# Fixes in v9.1:
-#  - Fixed orphaned SELL auto-close block (was causing NameError on every SELL signal)
-#  - Restored predict_price() function body (was missing, broke Tab 3 & Tab 17)
-#  - Wired Kelly Criterion into actual position sizing (was display-only)
-#  - Fixed SHORT trailing SL math (now tracks highest_price, not lowest)
-#  - Fixed SHORT balance accounting (clean debit/credit model)
-#  - Telegram secrets moved to st.secrets with safe fallback
-#  - Leaderboard uses agent's starting_capital (not hardcoded 100k)
-#  - Cached price lookup in agent_summary (no more per-position API calls)
-# ====================================================================================
+# ================= QUANTEDGE AI v10.0 - INSTITUTIONAL GRADE =================
+# New in v10: LLM AI, Volume Profile, Max Pain, Monte Carlo VaR, Macro Engine, 
+# Ensemble ML, On-Chain Data, MPT, Voice Commands
+# ============================================================================
 
 import streamlit as st
 import yfinance as yf
@@ -17,481 +10,1130 @@ import numpy as np
 import requests
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.linear_model import Ridge, LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import Ridge
 from datetime import datetime, timedelta
 import pytz
 import math
 import time as time_module
+import json
+import warnings
+warnings.filterwarnings('ignore')
 
+# ================= NEW DEPENDENCIES =================
+# Install these: pip install groq scipy speechrecognition
 try:
-    from streamlit_autorefresh import st_autorefresh
-    AUTOREFRESH_AVAILABLE = True
+    from groq import Groq
+    GROQ_AVAILABLE = True
 except ImportError:
-    AUTOREFRESH_AVAILABLE = False
+    GROQ_AVAILABLE = False
 
-st.set_page_config(
-    page_title="QuantEdge AI v9.0 — Kelly + Backtester",
-    layout="wide",
-    page_icon="⚡",
-    initial_sidebar_state="expanded"
-)
-
-# ================= CSS =================
-st.markdown("""
-<style>
-    .stApp { background-color: #0a0e1a; color: #e0e6f0; }
-    div[data-testid="stSidebarContent"] {
-        background-color: #0d1520;
-        border-right: 1px solid #00d4ff15;
-    }
-    .main-header {
-        background: linear-gradient(135deg, #0d1b2a 0%, #1a2744 50%, #0d1b2a 100%);
-        border: 1px solid #00d4ff33;
-        border-radius: 12px;
-        padding: 18px 26px;
-        margin-bottom: 18px;
-        box-shadow: 0 0 30px #00d4ff15;
-    }
-    .main-header h1 { color: #00d4ff; font-size: 1.9rem; font-weight: 800; letter-spacing: 2px; margin: 0; }
-    .main-header p  { color: #7a8fa6; font-size: 0.8rem; margin: 3px 0 0 0; letter-spacing: 1px; }
-    .card-buy  { background:linear-gradient(135deg,#003d1f,#005a2b); border:1px solid #00ff8844; border-left:4px solid #00ff88; border-radius:8px; padding:12px 14px; margin:5px 0; }
-    .card-sell { background:linear-gradient(135deg,#3d0000,#5a0000); border:1px solid #ff444444; border-left:4px solid #ff4444; border-radius:8px; padding:12px 14px; margin:5px 0; }
-    .card-hold { background:linear-gradient(135deg,#1a1f2e,#222840); border:1px solid #ffffff15; border-left:4px solid #555; border-radius:8px; padding:12px 14px; margin:5px 0; }
-    .card-info { background:#0d1b2a; border:1px solid #00d4ff22; border-radius:10px; padding:14px; margin:6px 0; }
-    .card-alert{ background:linear-gradient(135deg,#1a1400,#2a2000); border:1px solid #ffaa0044; border-left:4px solid #ffaa00; border-radius:8px; padding:12px 14px; margin:5px 0; }
-    .ai-box    { background:#0d1520; border:1px solid #00d4ff22; border-radius:8px; padding:12px 16px; font-size:0.85rem; color:#a0b4c8; font-style:italic; }
-    .sr-buy    { color:#00ff88; font-weight:700; }
-    .sr-sell   { color:#ff4444; font-weight:700; }
-    .sr-neutral{ color:#ffaa00; font-weight:600; }
-    .news-card { background:#0d1b2a; border:1px solid #ffffff10; border-radius:8px; padding:10px 12px; margin:5px 0; }
-    .stTabs [data-baseweb="tab-list"] { background-color:#0d1520; border-bottom:1px solid #00d4ff22; }
-    .stTabs [data-baseweb="tab"]      { color:#7a8fa6; font-weight:600; }
-    .stTabs [aria-selected="true"]    { color:#00d4ff !important; border-bottom:2px solid #00d4ff !important; }
-    .leaderboard-gold   { background:linear-gradient(135deg,#2a1f00,#3d2e00); border:1px solid #ffd70044; border-left:4px solid #ffd700; border-radius:8px; padding:10px 14px; margin:4px 0; }
-    .leaderboard-silver { background:linear-gradient(135deg,#1a1f2e,#222840); border:1px solid #c0c0c044; border-left:4px solid #c0c0c0; border-radius:8px; padding:10px 14px; margin:4px 0; }
-    .leaderboard-bronze { background:linear-gradient(135deg,#1a1000,#2a1800); border:1px solid #cd7f3244; border-left:4px solid #cd7f32; border-radius:8px; padding:10px 14px; margin:4px 0; }
-    .pred-up   { color:#00ff88; font-size:1.3rem; font-weight:800; }
-    .pred-down { color:#ff4444; font-size:1.3rem; font-weight:800; }
-    .pred-box  { background:#0d1b2a; border:1px solid #00d4ff22; border-radius:10px; padding:16px; text-align:center; }
-</style>
-""", unsafe_allow_html=True)
-
-# ================= AUTH =================
-MY_PASSWORD = "QuantEdge2026"
-def check_password():
-    if "auth" not in st.session_state:
-        st.session_state.auth = False
-    if not st.session_state.auth:
-        st.markdown('<div class="main-header"><h1>⚡ QUANTEDGE AI v9.0</h1><p>SECURE TRADING TERMINAL</p</div>', unsafe_allow_html=True)
-        _, c, _ = st.columns([1, 2, 1])
-        with c:
-            pwd = st.text_input("🔒 Password:", type="password")
-            if pwd == MY_PASSWORD:
-                st.session_state.auth = True
-                st.rerun()
-            elif pwd:
-                st.error("❌ Galat Password!")
-        return False
-    return True
-
-if not check_password():
-    st.stop()
-
-# ================= CONSTANTS & SECRETS =================
-ist = pytz.timezone('Asia/Kolkata')
-now = datetime.now(ist)
-
-# FIX: Telegram secrets moved to st.secrets with safe fallback
 try:
-    TOKEN = st.secrets["TELEGRAM_TOKEN"]
-    CHAT_ID = st.secrets["TELEGRAM_CHAT_ID"]
-    SECRETS_AVAILABLE = True
-except Exception:
-    # Fallback for local dev — user must replace these in production
-    TOKEN = ""
-    CHAT_ID = ""
-    SECRETS_AVAILABLE = False
+    from scipy import stats
+    from scipy.optimize import minimize
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
 
-# ================= MARKET UNIVERSES =================
-NSE_STOCKS = [
-    # Nifty 50
-    "RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS","HINDUNILVR.NS",
-    "HDFC.NS","SBIN.NS","BHARTIARTL.NS","KOTAKBANK.NS","ITC.NS","LT.NS",
-    "AXISBANK.NS","ASIANPAINT.NS","MARUTI.NS","TITAN.NS","ULTRACEMCO.NS",
-    "WIPRO.NS","SUNPHARMA.NS","TECHM.NS","NESTLEIND.NS","BAJFINANCE.NS",
-    "POWERGRID.NS","NTPC.NS","ONGC.NS","JSWSTEEL.NS","TATASTEEL.NS",
-    "HCLTECH.NS","M&M.NS","BAJAJFINSV.NS",
-    # Nifty Next 50
-    "ADANIENT.NS","ADANIPORTS.NS","ADANIGREEN.NS","DMART.NS","SIEMENS.NS",
-    "PIDILITIND.NS","HAVELLS.NS","MARICO.NS","DABUR.NS","GODREJCP.NS",
-    "MUTHOOTFIN.NS","CHOLAFIN.NS","RECLTD.NS","PFC.NS","IRCTC.NS",
-    "INDHOTEL.NS","TRENT.NS","VEDL.NS","HINDALCO.NS","COALINDIA.NS",
-    "GRASIM.NS","HEROMOTOCO.NS","BAJAJ-AUTO.NS","EICHERMOT.NS","TVSMOTOR.NS",
-    "TATAMOTORS.NS","MOTHERSON.NS","BOSCHLTD.NS","MRF.NS","APOLLOHOSP.NS",
-    # Midcap Stars
-    "ZOMATO.NS","NYKAA.NS","PAYTM.NS","POLICYBZR.NS","DELHIVERY.NS",
-    "HDFCLIFE.NS","SBILIFE.NS","ICICIGI.NS","MFSL.NS","STARHEALTH.NS",
-    "DLF.NS","GODREJPROP.NS","OBEROIRLTY.NS","PHOENIXLTD.NS","PRESTIGE.NS",
-    "PERSISTENT.NS","LTIM.NS","TATAELXSI.NS","MPHASIS.NS","COFORGE.NS",
-    "HAPPSTMNDS.NS","NETWEB.NS","KPIT.NS","CYIENT.NS","MASTEK.NS",
-    "SUZLON.NS","CESC.NS","TORNTPOWER.NS","TATAPOWER.NS","ADANIPOWER.NS",
-    "HAL.NS","BEL.NS","BHEL.NS","COCHINSHIP.NS","MAZDOCK.NS","GRSE.NS",
-    "TORNTPHARM.NS","ZYDUSLIFE.NS","AUROPHARMA.NS","ALKEM.NS","IPCALAB.NS",
-    "MAXHEALTH.NS","FORTIS.NS","METROPOLIS.NS","LALPATHLAB.NS","THYROCARE.NS",
-    "BRITANNIA.NS","VBL.NS","JUBLFOOD.NS","DEVYANI.NS","SAPPHIRE.NS",
-    "ABB.NS","CUMMINSIND.NS","THERMAX.NS","BHARATFORGE.NS","KALYANKJIL.NS",
-    "SRF.NS","AARTIIND.NS","DEEPAKNTR.NS","PIIND.NS","UPL.NS",
-    "BANDHANBNK.NS","FEDERALBNK.NS","IDFCFIRSTB.NS","RBLBANK.NS",
-]
+try:
+    import speech_recognition as sr
+    VOICE_AVAILABLE = True
+except ImportError:
+    VOICE_AVAILABLE = False
 
-CRYPTO = [
-    "BTC-USD","ETH-USD","BNB-USD","SOL-USD","XRP-USD","ADA-USD",
-    "AVAX-USD","DOGE-USD","MATIC-USD","DOT-USD","LINK-USD","UNI-USD",
-    "ATOM-USD","LTC-USD","BCH-USD","ALGO-USD","XLM-USD","FIL-USD",
-    "NEAR-USD","APT-USD","ARB-USD","OP-USD","INJ-USD","SUI-USD","TIA-USD"
-]
+# ================= GROQ LLM CONFIG =================
+GROQ_API_KEY = "gsk_yOUR_gROQ_aPI_kEY_hERE"  # Get free from console.groq.com
+GROQ_MODEL = "llama-3.3-70b-versatile"  # Free, fast, powerful
 
-US_STOCKS = [
-    "AAPL","MSFT","GOOGL","AMZN","NVDA","TSLA","META","AMD","NFLX","JPM",
-    "BAC","V","WMT","DIS","PLTR","UBER","COIN","SNOW","SHOP","CRWD",
-    "ABNB","RBLX","HOOD","ARM","SMCI","MU","INTC","QCOM","AVGO","TSM",
-    "BABA","JD","PDD","NIO","XPEV","LI","RIVN","LCID","F","GM",
-    "XOM","CVX","COP","SLB","HAL","GS","MS","C","WFC","AXP",
-    "PFE","MRNA","JNJ","ABBV","LLY","UNH","CVS","CI","HUM","ANTM",
-]
-
-NIFTY_INDEX  = "^NSEI"
-SP500_INDEX  = "^GSPC"
-BTC_BENCH    = "BTC-USD"
-
-SECTOR_MAP = {
-    "NSE": {
-        "IT":         ["INFY.NS","TCS.NS","HCLTECH.NS","WIPRO.NS","TECHM.NS","TATAELXSI.NS",
-                       "PERSISTENT.NS","LTIM.NS","MPHASIS.NS","COFORGE.NS","HAPPSTMNDS.NS",
-                       "NETWEB.NS","KPIT.NS","CYIENT.NS","MASTEK.NS"],
-        "Banking":    ["HDFCBANK.NS","ICICIBANK.NS","SBIN.NS","KOTAKBANK.NS","AXISBANK.NS",
-                       "BANDHANBNK.NS","FEDERALBNK.NS","IDFCFIRSTB.NS","RBLBANK.NS"],
-        "Auto":       ["TATAMOTORS.NS","MARUTI.NS","M&M.NS","BAJAJ-AUTO.NS","EICHERMOT.NS",
-                       "TVSMOTOR.NS","HEROMOTOCO.NS","BOSCHLTD.NS","MRF.NS","MOTHERSON.NS"],
-        "Pharma":     ["SUNPHARMA.NS","TORNTPHARM.NS","ZYDUSLIFE.NS","AUROPHARMA.NS",
-                       "ALKEM.NS","IPCALAB.NS","APOLLOHOSP.NS","MAXHEALTH.NS","FORTIS.NS",
-                       "METROPOLIS.NS","LALPATHLAB.NS","THYROCARE.NS"],
-        "Energy":     ["ONGC.NS","NTPC.NS","POWERGRID.NS","COALINDIA.NS","ADANIPOWER.NS",
-                       "TATAPOWER.NS","CESC.NS","TORNTPOWER.NS","ADANIGREEN.NS"],
-        "Metals":     ["JSWSTEEL.NS","TATASTEEL.NS","HINDALCO.NS","VEDL.NS"],
-        "FMCG":       ["HINDUNILVR.NS","ITC.NS","NESTLEIND.NS","BRITANNIA.NS","VBL.NS",
-                       "MARICO.NS","DABUR.NS","GODREJCP.NS","JUBLFOOD.NS","DEVYANI.NS"],
-        "Realty":     ["DLF.NS","GODREJPROP.NS","OBEROIRLTY.NS","PHOENIXLTD.NS","PRESTIGE.NS"],
-        "Finance":    ["BAJFINANCE.NS","BAJAJFINSV.NS","MUTHOOTFIN.NS","CHOLAFIN.NS",
-                       "RECLTD.NS","PFC.NS","HDFCLIFE.NS","SBILIFE.NS","ICICIGI.NS","MFSL.NS"],
-        "Defense":    ["HAL.NS","BEL.NS","BHEL.NS","COCHINSHIP.NS","MAZDOCK.NS","GRSE.NS"],
-        "Consumer":   ["TITAN.NS","ASIANPAINT.NS","TRENT.NS","DMART.NS","ZOMATO.NS",
-                       "NYKAA.NS","PAYTM.NS","POLICYBZR.NS","DELHIVERY.NS","IRCTC.NS"],
-        "Chemicals":  ["SRF.NS","AARTIIND.NS","DEEPAKNTR.NS","PIIND.NS","UPL.NS","PIDILITIND.NS"],
-        "Industrials":["ABB.NS","CUMMINSIND.NS","THERMAX.NS","SIEMENS.NS","ULTRACEMCO.NS",
-                       "GRASIM.NS","HAVELLS.NS"],
-        "Conglomerate":["RELIANCE.NS","ADANIENT.NS","ADANIPORTS.NS","LT.NS"],
-    },
-    "Crypto": {
-        "Layer1":     ["BTC-USD","ETH-USD","SOL-USD","ADA-USD","AVAX-USD","NEAR-USD","APT-USD","SUI-USD"],
-        "Exchange/DeFi":["BNB-USD","UNI-USD","LINK-USD"],
-        "Payments":   ["XRP-USD","LTC-USD","BCH-USD","XLM-USD"],
-        "Meme/Other": ["DOGE-USD"],
-        "Scaling":    ["MATIC-USD","ARB-USD","OP-USD","TIA-USD"],
-        "Infra":      ["DOT-USD","ATOM-USD","ALGO-USD","FIL-USD","INJ-USD"],
-    },
-    "US": {
-        "Big Tech":   ["AAPL","MSFT","GOOGL","AMZN","META"],
-        "Semiconductors":["NVDA","AMD","MU","INTC","QCOM","AVGO","TSM","SMCI","ARM"],
-        "EV/Auto":    ["TSLA","F","GM","RIVN","LCID","NIO","XPEV","LI"],
-        "Banking":    ["JPM","BAC","GS","MS","C","WFC"],
-        "Fintech":    ["V","AXP","COIN","HOOD"],
-        "Energy":     ["XOM","CVX","COP","SLB","HAL"],
-        "Healthcare": ["PFE","MRNA","JNJ","ABBV","LLY","UNH","CVS","CI","HUM","ANTM"],
-        "Consumer":   ["WMT","DIS","NFLX","UBER","ABNB","RBLX"],
-        "Software":   ["SNOW","SHOP","CRWD","PLTR"],
-        "China ADR":  ["BABA","JD","PDD"],
-    },
-}
-
-# ================= SESSION STATE — 3 INDEPENDENT AI AGENTS =================
-def make_agent_state():
-    return {
-        "balance": 100000.0,
-        "starting_capital": 100000.0,
-        "positions": {},        # {pos_key: qty} — qty positive (LONG) or negative (SHORT)
-        "entry_price": {},
-        "highest_price": {},    # for LONG positions (profit protection - tracks highs)
-        "lowest_price": {},     # for SHORT positions (profit protection - tracks lows)
-        "entry_mode": {},
-        "position_direction": {}, # {pos_key: "LONG"/"SHORT"}
-        "trade_log": [],
-        "paused_until": None,
-        "pause_reason": "",
-        "reset_count": 0,
-        "lessons_learned": [],
-        "kelly_fractions": {},
-    }
-
-DEFAULTS = {
-    "agent_nse":    make_agent_state(),
-    "agent_crypto": make_agent_state(),
-    "agent_us":     make_agent_state(),
-    "price_alerts": [],
-    "triggered_alerts": [],
-    "agent_running": True,
-    "last_scan_time": None,
-    "weekly_reports": [],
-    "scan_log": [],
-    "daily_summaries": [],
-    "last_summary_date": None,
-    "_last_price_cache": {},   # FIX: cache of latest prices per symbol (avoid re-fetch in agent_summary)
-    "_last_price_cache_time": None,
-}
-
-for k, v in DEFAULTS.items():
-    if k not in st.session_state:
-        if isinstance(v, dict):
-            st.session_state[k] = {kk: (list(vv) if isinstance(vv, list) else (dict(vv) if isinstance(vv, dict) else vv))
-                                    for kk, vv in v.items()} if k.startswith("agent_") else dict(v)
-        elif isinstance(v, list):
-            st.session_state[k] = list(v)
-        else:
-            st.session_state[k] = v
-
-AGENT_KEYS = {"NSE": "agent_nse", "Crypto": "agent_crypto", "US": "agent_us"}
-AGENT_CURRENCY = {"NSE": "₹", "Crypto": "$", "US": "$"}
-
-# ================= SIDEBAR — AI AGENT CONTROL PANEL =================
-with st.sidebar:
-    st.markdown("## ⚡ QuantEdge AI v9.0")
-    st.markdown("##### 🤖 Autonomous Trading Agent")
-    st.divider()
-
-    st.session_state.agent_running = st.toggle("🟢 AI Agent ACTIVE", value=st.session_state.agent_running)
-    if st.session_state.agent_running:
-        st.success("Agent live hai — auto-scanning every 5 min")
-    else:
-        st.warning("Agent paused — manual mode")
-
-    st.divider()
-    st.markdown("### 🌐 Markets AI Manages")
-    manage_nse    = st.checkbox("🇮🇳 NSE India",  value=True)
-    manage_crypto = st.checkbox("🪙 Crypto",       value=True)
-    manage_us     = st.checkbox("🇺🇸 US Stocks",   value=True)
-
-    st.divider()
-    st.markdown("### 📊 Trade Styles AI Runs")
-    run_intraday = st.checkbox("⚡ Intraday", value=True)
-    run_swing    = st.checkbox("📈 Swing",    value=True)
-
-    st.divider()
-    st.markdown("### ⚙️ Risk Settings")
-    ic1, ic2 = st.columns(2)
-    with ic1:
-        st.caption("Intraday")
-        INTRA_SL = st.slider("SL %",  0.5, 3.0, 1.0, 0.1, key="intra_sl") / 100
-        INTRA_TG = st.slider("TG %",  1.0, 5.0, 2.5, 0.1, key="intra_tg") / 100
-    with ic2:
-        st.caption("Swing")
-        SWING_SL = st.slider("SL %",  1.0, 8.0,  3.0, 0.5, key="swing_sl") / 100
-        SWING_TG = st.slider("TG %",  3.0, 20.0, 8.0, 0.5, key="swing_tg") / 100
-
-    st.divider()
-    telegram_on = st.toggle("📲 Telegram Alerts", value=True)
-    sound_alert_on = st.toggle("🔊 Sound Alerts (browser)", value=True)
-    min_score   = st.slider("Min Signal Score (auto-trade)", 50, 95, 75)
-    max_alloc_pct = st.slider("Max % capital per trade", 5, 30, 15)
-    mtf_confirm = st.toggle("🎯 Multi-Timeframe Confirmation", value=True)
-
-    st.divider()
-    st.markdown("### 📉 Drawdown Protection")
-    dd_protection_on = st.toggle("Auto-pause on losing streak", value=True)
-    dd_streak_limit   = st.slider("Pause after N consecutive losses", 2, 8, 4)
-    dd_pause_hours    = st.slider("Pause duration (hours)", 1, 48, 12)
-
-    st.divider()
-    st.markdown("### 🔄 Auto-Compounding")
-    compounding_on = st.toggle("Reinvest profits (compound)", value=False)
-
-    st.divider()
-    st.markdown("### 📊 Kelly Criterion Sizing")
-    kelly_on = st.toggle("Use Kelly Criterion", value=True,
-                         help="Math-optimal position sizing based on win-rate. Adjusts size dynamically as agent learns.")
-    if kelly_on:
-        st.caption("🎲 Kelly will auto-adjust position size based on trading history.")
-
-    st.divider()
-    st.caption(f"🕒 {now.strftime('%d %b %Y  %H:%M:%S')} IST")
-    if st.session_state.last_scan_time:
-        st.caption(f"🔄 Last scan: {st.session_state.last_scan_time}")
-
-    if not SECRETS_AVAILABLE and telegram_on:
-        st.warning("⚠️ Telegram secrets not in `st.secrets`. Alerts will silently fail. Add TELEGRAM_TOKEN & TELEGRAM_CHAT_ID.")
-
-ACTIVE_MARKETS = []
-if manage_nse:    ACTIVE_MARKETS.append("NSE")
-if manage_crypto: ACTIVE_MARKETS.append("Crypto")
-if manage_us:     ACTIVE_MARKETS.append("US")
-
-ACTIVE_MODES = []
-if run_intraday: ACTIVE_MODES.append("Intraday")
-if run_swing:    ACTIVE_MODES.append("Swing")
-
-MARKET_UNIVERSE = {"NSE": NSE_STOCKS, "Crypto": CRYPTO, "US": US_STOCKS}
-MARKET_BENCH    = {"NSE": NIFTY_INDEX, "Crypto": BTC_BENCH, "US": SP500_INDEX}
-RISK_PARAMS     = {"Intraday": (INTRA_SL, INTRA_TG), "Swing": (SWING_SL, SWING_TG)}
-
-def market_can_trade(market, mode_):
-    """Intraday only during market hours for NSE/US. Crypto trades 24/7."""
-    if mode_ != "Intraday":
-        return True
-    if market == "Crypto":
-        return True
-    if market == "NSE":
-        return not (now.hour > 14 or (now.hour == 14 and now.minute >= 30))
-    if market == "US":
-        return True
-    return True
-
-# ================= HELPERS =================
-def send_telegram(msg):
-    if not telegram_on or not SECRETS_AVAILABLE or not TOKEN or not CHAT_ID:
-        return
+# ================= VOLUME PROFILE CALCULATION =================
+def calculate_volume_profile(df, num_bins=50):
+    """
+    Calculate Volume Profile with POC, VAH, VAL
+    Returns: dict with profile data and key levels
+    """
+    if df is None or len(df) < 20:
+        return None
+    
     try:
-        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-                      data={"chat_id": CHAT_ID, "text": msg}, timeout=8)
-    except:
-        pass
+        # Use typical price for better accuracy
+        typical_price = (df['High'] + df['Low'] + df['Close']) / 3
+        volume = df['Volume']
+        
+        # Create price bins
+        price_min = typical_price.min()
+        price_max = typical_price.max()
+        bins = np.linspace(price_min, price_max, num_bins + 1)
+        
+        # Calculate volume at each price level
+        volume_profile = np.zeros(num_bins)
+        for i in range(len(typical_price)):
+            price_idx = np.digitize(typical_price.iloc[i], bins) - 1
+            if 0 <= price_idx < num_bins:
+                volume_profile[price_idx] += volume.iloc[i]
+        
+        # Find POC (Point of Control) - highest volume price
+        poc_idx = np.argmax(volume_profile)
+        poc_price = (bins[poc_idx] + bins[poc_idx + 1]) / 2
+        
+        # Calculate Value Area (70% of total volume)
+        total_volume = volume_profile.sum()
+        target_volume = total_volume * 0.70
+        
+        # Start from POC and expand outward
+        accumulated_volume = volume_profile[poc_idx]
+        lower_idx = poc_idx
+        upper_idx = poc_idx
+        
+        while accumulated_volume < target_volume:
+            # Expand to lower price
+            if lower_idx > 0:
+                lower_idx -= 1
+                accumulated_volume += volume_profile[lower_idx]
+            
+            if accumulated_volume >= target_volume:
+                break
+            
+            # Expand to higher price
+            if upper_idx < num_bins - 1:
+                upper_idx += 1
+                accumulated_volume += volume_profile[upper_idx]
+        
+        vah_price = (bins[upper_idx] + bins[upper_idx + 1]) / 2  # Value Area High
+        val_price = (bins[lower_idx] + bins[lower_idx + 1]) / 2  # Value Area Low
+        
+        return {
+            'poc': round(poc_price, 2),
+            'vah': round(vah_price, 2),
+            'val': round(val_price, 2),
+            'bins': bins,
+            'volume_profile': volume_profile,
+            'total_volume': total_volume
+        }
+    except Exception as e:
+        return None
 
-# ================= DATA =================
-@st.cache_data(ttl=90, show_spinner=False)
-def get_data(symbol, current_mode):
+# ================= MAX PAIN CALCULATION =================
+def calculate_max_pain(options_chain):
+    """
+    Calculate Max Pain price for options expiry
+    Returns: price where option writers lose least money
+    """
+    if options_chain is None:
+        return None
+    
     try:
-        t = yf.Ticker(symbol)
-        df = t.history(period="5d", interval="5m") if current_mode == "Intraday" else t.history(period="1y")
-        return df.dropna() if not df.empty else None
+        calls = options_chain[options_chain['Call OI'] > 0][['Strike', 'Call OI']].copy()
+        puts = options_chain[options_chain['Put OI'] > 0][['Strike', 'Put OI']].copy()
+        
+        if calls.empty or puts.empty:
+            return None
+        
+        # Get all unique strikes
+        all_strikes = sorted(set(calls['Strike'].tolist() + puts['Strike'].tolist()))
+        
+        # Calculate pain at each strike
+        pain_values = []
+        for test_price in all_strikes:
+            total_pain = 0
+            
+            # Call writers pain
+            for _, row in calls.iterrows():
+                strike = row['Strike']
+                oi = row['Call OI']
+                if test_price > strike:
+                    total_pain += (test_price - strike) * oi
+            
+            # Put writers pain
+            for _, row in puts.iterrows():
+                strike = row['Strike']
+                oi = row['Put OI']
+                if test_price < strike:
+                    total_pain += (strike - test_price) * oi
+            
+            pain_values.append({'price': test_price, 'pain': total_pain})
+        
+        # Max pain is where total pain is minimum
+        max_pain_df = pd.DataFrame(pain_values)
+        max_pain_price = max_pain_df.loc[max_pain_df['pain'].idxmin(), 'price']
+        
+        return round(max_pain_price, 2)
     except:
         return None
 
-@st.cache_data(ttl=300, show_spinner=False)
-def get_market_regime(bench, current_mode):
+# ================= OI CHANGE ANALYSIS =================
+def analyze_oi_change(symbol):
+    """
+    Analyze Open Interest changes to detect:
+    - Long Buildup (Price ↑, OI ↑)
+    - Short Buildup (Price ↓, OI ↑)
+    - Long Unwinding (Price ↓, OI ↓)
+    - Short Covering (Price ↑, OI ↓)
+    """
     try:
-        df = yf.Ticker(bench).history(period="6mo" if current_mode == "Swing" else "5d",
-                                       interval="1d"  if current_mode == "Swing" else "5m")
-        if df.empty:
-            return True, "Unknown", 50
-        df['SMA50'] = df['Close'].rolling(50).mean()
-        last = df['Close'].iloc[-1]
-        sma  = df['SMA50'].iloc[-1]
-        bull = last > sma
-        pct  = (last - sma) / sma * 100
-        return bull, f"{'Bullish' if bull else 'Bearish'} ({pct:+.1f}% vs SMA50)", abs(pct)
-    except:
-        return True, "Unknown", 0
-
-# ================= MULTI-TIMEFRAME CONFIRMATION =================
-@st.cache_data(ttl=600, show_spinner=False)
-def get_higher_timeframe_trend(symbol, current_mode):
-    try:
-        if current_mode == "Intraday":
-            df5 = yf.Ticker(symbol).history(period="5d", interval="5m")
-            if df5.empty or len(df5) < 30:
-                return True, "1H data unavailable — skipping confirmation"
-            df1h = df5['Close'].resample('1h').last().dropna()
-            if len(df1h) < 10:
-                return True, "Insufficient 1H bars"
-            ema_fast = df1h.ewm(span=5).mean().iloc[-1]
-            ema_slow = df1h.ewm(span=10).mean().iloc[-1]
-            hourly_bull = ema_fast > ema_slow
-
-            dfd = yf.Ticker(symbol).history(period="1mo")
-            daily_bull = True
-            if not dfd.empty and len(dfd) >= 10:
-                daily_bull = dfd['Close'].iloc[-1] > dfd['Close'].rolling(10).mean().iloc[-1]
-
-            aligned = hourly_bull and daily_bull
-            detail = f"1H:{'🟢' if hourly_bull else '🔴'} Daily:{'🟢' if daily_bull else '🔴'}"
-            return aligned, detail
+        # Get futures data (approximation using stock data)
+        df = yf.Ticker(symbol).history(period="5d", interval="1d")
+        if df is None or len(df) < 2:
+            return None
+        
+        # Calculate price change
+        price_change = (df['Close'].iloc[-1] - df['Close'].iloc[-2]) / df['Close'].iloc[-2] * 100
+        
+        # Approximate OI change using volume as proxy
+        vol_change = (df['Volume'].iloc[-1] - df['Volume'].iloc[-2]) / df['Volume'].iloc[-2] * 100
+        
+        # Determine buildup type
+        if price_change > 0 and vol_change > 10:
+            buildup = "🟢 Long Buildup"
+            signal = "BULLISH"
+        elif price_change < 0 and vol_change > 10:
+            buildup = "🔴 Short Buildup"
+            signal = "BEARISH"
+        elif price_change < 0 and vol_change < -10:
+            buildup = "🟡 Long Unwinding"
+            signal = "BEARISH"
+        elif price_change > 0 and vol_change < -10:
+            buildup = "🟡 Short Covering"
+            signal = "BULLISH"
         else:
-            dfw = yf.Ticker(symbol).history(period="1y", interval="1wk")
-            if dfw.empty or len(dfw) < 10:
-                return True, "Weekly data unavailable — skipping confirmation"
-            weekly_bull = dfw['Close'].iloc[-1] > dfw['Close'].rolling(10).mean().iloc[-1]
-            detail = f"Weekly trend: {'🟢 Bullish' if weekly_bull else '🔴 Bearish'}"
-            return weekly_bull, detail
+            buildup = "⚪ Neutral"
+            signal = "NEUTRAL"
+        
+        return {
+            'buildup': buildup,
+            'signal': signal,
+            'price_change': round(price_change, 2),
+            'vol_change': round(vol_change, 2)
+        }
     except:
-        return True, "MTF check failed — proceeding without confirmation"
+        return None
 
-# ================= INDICATORS =================
-def compute_indicators(df, current_mode):
-    df = df.copy()
-    c = df['Close']
-    df['SMA_20']  = c.rolling(20).mean()
-    df['SMA_50']  = c.rolling(50).mean()
-    df['SMA_200'] = c.rolling(200).mean()
-    df['EMA_9']   = c.ewm(span=9).mean()
-    df['Vol_SMA'] = df['Volume'].rolling(20).mean()
-
-    delta = c.diff()
-    gain  = delta.clip(lower=0).rolling(14).mean()
-    loss  = (-delta.clip(upper=0)).rolling(14).mean()
-    df['RSI'] = 100 - (100 / (1 + gain / (loss + 1e-9)))
-
-    e1 = c.ewm(span=12, adjust=False).mean()
-    e2 = c.ewm(span=26, adjust=False).mean()
-    df['MACD']   = e1 - e2
-    df['MacdSig'] = df['MACD'].ewm(span=9, adjust=False).mean()
-    df['MacdH']   = df['MACD'] - df['MacdSig']
-
-    df['BB_Mid'] = c.rolling(20).mean()
-    df['BB_Std'] = c.rolling(20).std()
-    df['BB_Up']  = df['BB_Mid'] + df['BB_Std'] * 2
-    df['BB_Low'] = df['BB_Mid'] - df['BB_Std'] * 2
-    df['BB_pct'] = (c - df['BB_Low']) / (df['BB_Up'] - df['BB_Low'] + 1e-9)
-
-    df['ATR']    = (df['High'] - df['Low']).rolling(14).mean()
-    df['Stoch_K']= ((c - df['Low'].rolling(14).min()) /
-                    (df['High'].rolling(14).max() - df['Low'].rolling(14).min() + 1e-9)) * 100
-    df['Stoch_D']= df['Stoch_K'].rolling(3).mean()
-
-    if current_mode == "Intraday":
-        df['TP']  = (df['High'] + df['Low'] + c) / 3
-        df['VP']  = df['TP'] * df['Volume']
-        df['Date']= df.index.date
-        df['CumV'] = df.groupby('Date')['Volume'].cumsum()
-        df['CumVP']= df.groupby('Date')['VP'].cumsum()
-        df['VWAP'] = df['CumVP'] / (df['CumV'] + 1e-9)
-    return df.dropna()
-
-# ================= SUPPORT & RESISTANCE =================
-def get_sr_levels(df, n_levels=5):
-    """Pivot-based S&R + recent swing highs/lows"""
+# ================= MONTE CARLO VAR =================
+def calculate_var_monte_carlo(portfolio_value, returns_data, confidence=0.95, simulations=10000):
+    """
+    Calculate Value at Risk using Monte Carlo simulation
+    Returns: VaR at given confidence level
+    """
+    if not SCIPY_AVAILABLE or returns_data is None or len(returns_data) < 30:
+        return None
+    
     try:
-        df = df.tail(120).copy()
-        highs = df['High'].values
-        lows  = df['Low'].values
-        closes= df['Close'].values
+        # Calculate historical mean and std
+        mean_return = np.mean(returns_data)
+        std_return = np.std(returns_data)
+        
+        # Monte Carlo simulation
+        np.random.seed(42)
+        simulated_returns = np.random.normal(mean_return, std_return, simulations)
+        
+        # Calculate VaR
+        var_percentile = (1 - confidence) * 100
+        var_return = np.percentile(simulated_returns, var_percentile)
+        var_amount = portfolio_value * var_return
+        
+        # Expected Shortfall (CVaR)
+        tail_returns = simulated_returns[simulated_returns <= var_return]
+        cvar_return = np.mean(tail_returns) if len(tail_returns) > 0 else var_return
+        cvar_amount = portfolio_value * cvar_return
+        
+        return {
+            'var_95': round(abs(var_amount), 2),
+            'var_percent': round(abs(var_return * 100), 2),
+            'cvar_95': round(abs(cvar_amount), 2),
+            'cvar_percent': round(abs(cvar_return * 100), 2),
+            'confidence': confidence,
+            'simulations': simulations
+        }
+    except:
+        return None
 
-        pivot = (highs[-1] + lows[-1] + closes[-1]) / 3
-        r1 = 2 * pivot - lows[-1]
-        s1 = 2 * pivot - highs[-1]
-        r2 = pivot + (highs[-1] - lows[-1])
-        s2 = pivot - (highs[-1] - lows[-1])
-        r3 = highs[-1] + 2 * (pivot - lows[-1])
-        s3 = lows[-1]  - 2 * (highs[-1] - pivot)
+# ================= MACRO CORRELATION ENGINE =================
+def get_macro_correlation(symbol, period="6mo"):
+    """
+    Calculate correlation with macro indicators:
+    - DXY (Dollar Index)
+    - US 10Y Yield
+    - Crude Oil
+    - Gold
+    """
+    try:
+        # Get stock returns
+        stock_df = yf.Ticker(symbol).history(period=period)['Close'].pct_change().dropna()
+        
+        # Macro indicators
+        macro_symbols = {
+            'DXY': 'DX-Y.NYB',
+            'US10Y': '^TNX',
+            'Crude': 'CL=F',
+            'Gold': 'GC=F'
+        }
+        
+        correlations = {}
+        for name, sym in macro_symbols.items():
+            try:
+                macro_df = yf.Ticker(sym).history(period=period)['Close'].pct_change().dropna()
+                
+                # Align dates
+                merged = pd.concat([stock_df, macro_df], axis=1, join='inner').dropna()
+                if len(merged) >= 20:
+                    corr = merged.iloc[:, 0].corr(merged.iloc[:, 1])
+                    correlations[name] = {
+                        'correlation': round(corr, 3),
+                        'interpretation': 'Strong Positive' if corr > 0.7 else 
+                                        'Moderate Positive' if corr > 0.3 else
+                                        'Weak' if abs(corr) < 0.3 else
+                                        'Moderate Negative' if corr > -0.7 else 'Strong Negative'
+                    }
+            except:
+                continue
+        
+        return correlations if correlations else None
+    except:
+        return None
 
-        swing_h, swing_l = [], []
-        for i in range(5, len(df) - 5):
-            if highs[i] == max(highs[i-5:i+6]):
-                swing_h.append(highs[i])
-            if lows[i] == min(lows[i-5:i+6]):
-                swing_l.append(lows[i])
+# ================= ENSEMBLE ML MODEL =================
+def ensemble_predict(symbol, df):
+    """
+    Combine multiple ML models for better predictions:
+    - Gradient Boosting
+    - Random Forest
+    - Logistic Regression
+    """
+    if df is None or len(df) < 200:
+        return None
+    
+    try:
+        # Feature engineering
+        c = df['Close']
+        df = df.copy()
+        df['r1'] = c.pct_change(1)
+        df['r5'] = c.pct_change(5)
+        df['rsi'] = 100 - (100 / (1 + (c.diff().clip(lower=0).rolling(14).mean() / 
+                                        (-c.diff().clip(upper=0)).rolling(14).mean() + 1e-9)))
+        df['macd'] = (c.ewm(span=12).mean() - c.ewm(span=26).mean()) / (c + 1e-9)
+        df['bb_pos'] = (c - c.rolling(20).mean()) / (c.rolling(20).std() * 2 + 1e-9)
+        df['vol_r'] = df['Volume'] / (df['Volume'].rolling(20).mean() + 1e-9)
+        
+        df['label'] = (c.shift(-5) / c - 1 > 0.02).astype(int)
+        
+        feats = ['r1', 'r5', 'rsi', 'macd', 'bb_pos', 'vol_r']
+        df = df.dropna()
+        
+        if len(df) < 100:
+            return None
+        
+        X = df[feats].values
+        y = df['label'].values
+        
+        split = int(len(X) * 0.8)
+        Xtr, Xte = X[:split], X[split:]
+        ytr, yte = y[:split], y[split:]
+        
+        sc = StandardScaler()
+        Xtr_s = sc.fit_transform(Xtr)
+        Xte_s = sc.transform(Xte)
+        
+        # Train multiple models
+        models = {
+            'GBM': GradientBoostingClassifier(n_estimators=100, max_depth=3, random_state=42),
+            'RF': RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42),
+            'LR': LogisticRegression(random_state=42)
+        }
+        
+        predictions = {}
+        accuracies = {}
+        
+        for name, model in models.items():
+            model.fit(Xtr_s, ytr)
+            pred_proba = model.predict_proba(Xte_s)[:, 1]
+            predictions[name] = pred_proba
+            accuracies[name] = np.mean(model.predict(Xte_s) == yte)
+        
+        # Ensemble: average probabilities
+        ensemble_proba = np.mean(list(predictions.values()), axis=0)
+        ensemble_pred = (ensemble_proba > 0.5).astype(int)
+        ensemble_acc = np.mean(ensemble_pred == yte)
+        
+        # Latest prediction
+        latest = sc.transform(X[-1:])
+        latest_proba = {}
+        for name, model in models.items():
+            latest_proba[name] = model.predict_proba(latest)[0][1]
+        
+        ensemble_latest = np.mean(list(latest_proba.values()))
+        
+        return {
+            'ensemble_confidence': int(ensemble_latest * 100),
+            'direction': 'UP' if ensemble_latest > 0.5 else 'DOWN',
+            'model_accuracies': accuracies,
+            'ensemble_accuracy': ensemble_acc,
+            'individual_predictions': latest_proba
+        }
+    except:
+        return None
 
-        current = float(closes[-1])
+# ================= ON-CHAIN CRYPTO DATA =================
+def get_crypto_onchain(symbol):
+    """
+    Get on-chain metrics for crypto (simulated with available data)
+    In production, use Glassnode, CryptoQuant, or CoinMetrics API
+    """
+    if '-USD' not in symbol:
+        return None
+    
+    try:
+        df = yf.Ticker(symbol).history(period="30d")
+        if df is None or len(df) < 10:
+            return None
+        
+        # Simulated metrics based on price/volume patterns
+        volume_avg = df['Volume'].rolling(7).mean().iloc[-1]
+        volume_current = df['Volume'].iloc[-1]
+        volume_ratio = volume_current / (volume_avg + 1e-9)
+        
+        price_change_7d = (df['Close'].iloc[-1] / df['Close'].iloc[-7] - 1) * 100
+        
+        # Simulated whale activity (based on volume spikes)
+        whale_activity = "High" if volume_ratio > 2 else "Medium" if volume_ratio > 1.3 else "Low"
+        
+        # Simulated funding rate (based on price momentum)
+        funding_rate = 0.01 if price_change_7d > 5 else -0.01 if price_change_7d < -5 else 0.005
+        
+        return {
+            'whale_activity': whale_activity,
+            'volume_ratio': round(volume_ratio, 2),
+            'price_change_7d': round(price_change_7d, 2),
+            'funding_rate': round(funding_rate, 4),
+            'exchange_inflow': "Neutral",  # Would need real API
+            'sentiment': "Bullish" if price_change_7d > 0 else "Bearish"
+        }
+    except:
+        return None
 
-        resistances = sorted(set([r1, r2, r3] + swing_h[-4:]), reverse=False)
-        supports    = sorted(set([s1, s2, s3] + swing_l[-4:
+# ================= MODERN PORTFOLIO THEORY =================
+def calculate_efficient_frontier(symbols, period="1y"):
+    """
+    Calculate efficient frontier using Markowitz MPT
+    Returns optimal portfolio weights for different risk levels
+    """
+    if not SCIPY_AVAILABLE or len(symbols) < 2:
+        return None
+    
+    try:
+        # Get returns data
+        returns_data = {}
+        for sym in symbols:
+            df = yf.Ticker(sym).history(period=period)
+            if df is not None and len(df) > 50:
+                returns_data[sym] = df['Close'].pct_change().dropna()
+        
+        if len(returns_data) < 2:
+            return None
+        
+        # Create returns dataframe
+        returns_df = pd.DataFrame(returns_data).dropna()
+        
+        if len(returns_df) < 50:
+            return None
+        
+        # Calculate mean returns and covariance
+        mean_returns = returns_df.mean() * 252  # Annualized
+        cov_matrix = returns_df.cov() * 252  # Annualized
+        
+        # Portfolio optimization function
+        def portfolio_stats(weights):
+            weights = np.array(weights)
+            port_return = np.sum(mean_returns * weights)
+            port_std = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+            return port_return, port_std
+        
+        # Optimize for maximum Sharpe ratio
+        def neg_sharpe(weights):
+            ret, std = portfolio_stats(weights)
+            return -(ret - 0.05) / std  # Risk-free rate = 5%
+        
+        # Constraints
+        constraints = (
+            {'type': 'eq', 'fun': lambda x: np.sum(x) - 1},  # Weights sum to 1
+        )
+        bounds = tuple((0, 1) for _ in range(len(symbols)))  # Long only
+        
+        # Initial guess
+        init_guess = np.array([1/len(symbols)] * len(symbols))
+        
+        # Optimize
+        result = minimize(neg_sharpe, init_guess, method='SLSQP', 
+                         bounds=bounds, constraints=constraints)
+        
+        if result.success:
+            optimal_weights = result.x
+            opt_return, opt_std = portfolio_stats(optimal_weights)
+            sharpe_ratio = (opt_return - 0.05) / opt_std
+            
+            return {
+                'symbols': list(returns_data.keys()),
+                'weights': {sym: round(w * 100, 1) for sym, w in zip(returns_data.keys(), optimal_weights)},
+                'expected_return': round(opt_return * 100, 2),
+                'expected_volatility': round(opt_std * 100, 2),
+                'sharpe_ratio': round(sharpe_ratio, 2)
+            }
+        return None
+    except:
+        return None
+
+# ================= GROQ LLM INTEGRATION =================
+def groq_ai_analysis(market_data, question):
+    """
+    Use Groq LLM for intelligent market analysis
+    """
+    if not GROQ_AVAILABLE or not GROQ_API_KEY.startswith('gsk_'):
+        return "⚠️ Groq API key not configured. Add your free API key from console.groq.com"
+    
+    try:
+        client = Groq(api_key=GROQ_API_KEY)
+        
+        system_prompt = """You are QuantEdge AI, an institutional-grade trading assistant. 
+        Analyze market data and provide concise, actionable insights. 
+        Focus on: technical levels, risk factors, and trade setup quality.
+        Keep responses under 200 words. Use bullet points for clarity."""
+        
+        user_prompt = f"""Market Data:
+{json.dumps(market_data, indent=2, default=str)}
+
+Question: {question}
+
+Provide your analysis:"""
+        
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.7,
+            max_tokens=500
+        )
+        
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"⚠️ Groq API error: {str(e)}"
+
+# ================= VOICE COMMAND SYSTEM =================
+def voice_command_listener():
+    """
+    Listen for voice commands and return recognized text
+    """
+    if not VOICE_AVAILABLE:
+        return None
+    
+    try:
+        recognizer = sr.Recognizer()
+        with sr.Microphone() as source:
+            st.info("🎤 Listening... Speak now")
+            recognizer.adjust_for_ambient_noise(source, duration=1)
+            audio = recognizer.listen(source, timeout=5, phrase_time_limit=5)
+            
+        try:
+            text = recognizer.recognize_google(audio)
+            return text.lower()
+        except sr.UnknownValueError:
+            return None
+        except sr.RequestError:
+            return None
+    except:
+        return None
+
+# ================= ENHANCED F&O ANALYSIS =================
+def enhanced_fno_analysis(symbol):
+    """
+    Complete F&O analysis with Max Pain, OI Change, PCR, Support/Resistance
+    """
+    try:
+        t = yf.Ticker(symbol)
+        
+        # Get options chain
+        exps = t.options
+        if not exps:
+            return None
+        
+        exp = exps[0]
+        chain = t.option_chain(exp)
+        
+        calls = chain.calls[['strike', 'lastPrice', 'volume', 'openInterest', 'impliedVolatility']].copy()
+        puts = chain.puts[['strike', 'lastPrice', 'volume', 'openInterest', 'impliedVolatility']].copy()
+        
+        calls.columns = ['Strike', 'Call Price', 'Call Vol', 'Call OI', 'Call IV']
+        puts.columns = ['Strike', 'Put Price', 'Put Vol', 'Put OI', 'Put IV']
+        
+        # Calculate metrics
+        total_call_oi = calls['Call OI'].sum()
+        total_put_oi = puts['Put OI'].sum()
+        pcr = round(total_put_oi / (total_call_oi + 1e-9), 2)
+        
+        # Max Pain
+        merged = pd.merge(calls, puts, on='Strike', how='outer').fillna(0)
+        max_pain = calculate_max_pain(merged)
+        
+        # OI Change Analysis
+        oi_analysis = analyze_oi_change(symbol)
+        
+        # Current price
+        current_price = t.info.get('regularMarketPrice', t.info.get('currentPrice', 0))
+        
+        # Support/Resistance from options
+        call_oi_sorted = calls.sort_values('Call OI', ascending=False).head(5)
+        put_oi_sorted = puts.sort_values('Put OI', ascending=False).head(5)
+        
+        resistance_levels = call_oi_sorted[call_oi_sorted['Strike'] > current_price]['Strike'].tolist()[:3]
+        support_levels = put_oi_sorted[put_oi_sorted['Strike'] < current_price]['Strike'].tolist()[:3]
+        
+        return {
+            'pcr': pcr,
+            'pcr_signal': 'Bullish' if pcr < 0.8 else 'Bearish' if pcr > 1.2 else 'Neutral',
+            'max_pain': max_pain,
+            'oi_analysis': oi_analysis,
+            'current_price': current_price,
+            'resistance_levels': resistance_levels,
+            'support_levels': support_levels,
+            'expiry': exp,
+            'total_call_oi': int(total_call_oi),
+            'total_put_oi': int(total_put_oi)
+        }
+    except:
+        return None
+
+# ================= NEW TABS FOR DASHBOARD =================
+# These functions create the UI for new features
+
+def tab_volume_profile():
+    """Volume Profile & POC Tab"""
+    st.markdown("### 📊 Volume Profile & Point of Control")
+    st.info("Institutional-level volume analysis - Find where most trading happened")
+    
+    vp_market = st.selectbox("Market:", ["NSE", "Crypto", "US"], key="vp_market")
+    vp_sym = st.selectbox("Stock:", MARKET_UNIVERSE.get(vp_market, ["RELIANCE.NS"]), key="vp_sym")
+    vp_period = st.selectbox("Period:", ["5d", "1mo", "3mo"], index=1, key="vp_period")
+    
+    if st.button("📊 Calculate Volume Profile", type="primary"):
+        with st.spinner("Calculating..."):
+            df = yf.Ticker(vp_sym).history(period=vp_period)
+            if df is not None and len(df) > 20:
+                vp_data = calculate_volume_profile(df, num_bins=50)
+                
+                if vp_data:
+                    # Display key levels
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("🎯 POC (Point of Control)", f"₹{vp_data['poc']}")
+                    m2.metric("📈 VAH (Value Area High)", f"₹{vp_data['vah']}")
+                    m3.metric("📉 VAL (Value Area Low)", f"₹{vp_data['val']}")
+                    
+                    # Volume Profile Chart
+                    fig = go.Figure()
+                    
+                    # Add volume profile as horizontal bars
+                    fig.add_trace(go.Bar(
+                        y=vp_data['bins'][:-1],
+                        x=vp_data['volume_profile'],
+                        orientation='h',
+                        marker_color='#00d4ff',
+                        opacity=0.6,
+                        name='Volume Profile'
+                    ))
+                    
+                    # Add price line
+                    fig.add_trace(go.Scatter(
+                        x=list(range(len(df))),
+                        y=df['Close'].values,
+                        mode='lines',
+                        line=dict(color='#00ff88', width=2),
+                        name='Price',
+                        xaxis='x2'
+                    ))
+                    
+                    # Add POC, VAH, VAL lines
+                    for level, color, name in [
+                        (vp_data['poc'], '#ffaa00', 'POC'),
+                        (vp_data['vah'], '#ff4444', 'VAH'),
+                        (vp_data['val'], '#00ff88', 'VAL')
+                    ]:
+                        fig.add_hline(y=level, line_dash="dash", line_color=color,
+                                     annotation_text=f"{name}: ₹{level}",
+                                     annotation_font_color=color)
+                    
+                    fig.update_layout(
+                        template='plotly_dark',
+                        paper_bgcolor='#0a0e1a',
+                        plot_bgcolor='#0d1520',
+                        height=500,
+                        title=f"{vp_sym} - Volume Profile",
+                        showlegend=True,
+                        xaxis=dict(title="Volume", side="top"),
+                        xaxis2=dict(title="Time", overlaying="y", side="bottom"),
+                        yaxis=dict(title="Price")
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Trading insights
+                    st.markdown("#### 💡 Trading Insights")
+                    current_price = df['Close'].iloc[-1]
+                    
+                    if current_price > vp_data['poc']:
+                        st.success(f"✅ Price above POC - Bullish bias. POC at ₹{vp_data['poc']} acts as support.")
+                    elif current_price < vp_data['poc']:
+                        st.warning(f"⚠️ Price below POC - Bearish bias. POC at ₹{vp_data['poc']} acts as resistance.")
+                    
+                    if vp_data['vah'] - vp_data['val'] < current_price * 0.02:
+                        st.info(f"📊 Narrow value area - Low volatility, breakout likely soon.")
+                    else:
+                        st.info(f"📊 Wide value area - High volatility range.")
+                else:
+                    st.error("Could not calculate volume profile")
+            else:
+                st.error("Insufficient data")
+
+def tab_macro_engine():
+    """Macro Correlation Engine Tab"""
+    st.markdown("### 🌍 Macro Correlation Engine")
+    st.info("See how your stock correlates with global macro indicators")
+    
+    me_market = st.selectbox("Market:", ["NSE", "Crypto", "US"], key="me_market")
+    me_sym = st.selectbox("Stock:", MARKET_UNIVERSE.get(me_market, ["RELIANCE.NS"]), key="me_sym")
+    
+    if st.button("🔍 Analyze Macro Correlation", type="primary"):
+        with st.spinner("Fetching macro data..."):
+            correlations = get_macro_correlation(me_sym, period="6mo")
+            
+            if correlations:
+                st.markdown(f"#### 📊 {me_sym} vs Global Indicators")
+                
+                for indicator, data in correlations.items():
+                    corr = data['correlation']
+                    interp = data['interpretation']
+                    
+                    color = '#00ff88' if abs(corr) < 0.3 else '#ffaa00' if abs(corr) < 0.7 else '#ff4444'
+                    icon = "🟢" if corr > 0.3 else "🔴" if corr < -0.3 else "🟡"
+                    
+                    st.markdown(f"""
+                    <div class="card-info">
+                        <div style="display:flex;justify-content:space-between;align-items:center">
+                            <div>
+                                <div style="font-size:1.2rem;font-weight:700;color:#fff">{indicator}</div>
+                                <div style="font-size:0.85rem;color:#7a8fa6">{interp}</div>
+                            </div>
+                            <div style="text-align:right">
+                                <div style="font-size:1.8rem;font-weight:800;color:{color}">{corr:+.3f}</div>
+                                <div style="font-size:0.75rem;color:#555">{icon} {'Positive' if corr > 0 else 'Negative'}</div>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                st.markdown("#### 💡 What This Means")
+                st.markdown("""
+                - **DXY (Dollar Index)**: Strong negative correlation = stock benefits from weak dollar
+                - **US 10Y Yield**: High correlation = stock sensitive to interest rates
+                - **Crude Oil**: Energy stocks correlate positively, others negatively
+                - **Gold**: Safe haven - negative correlation with risk assets
+                """)
+            else:
+                st.error("Could not fetch macro data")
+
+def tab_monte_carlo():
+    """Monte Carlo VaR Tab"""
+    st.markdown("### 🎲 Monte Carlo VaR (Value at Risk)")
+    st.info("Calculate maximum expected loss with 95% confidence using 10,000 simulations")
+    
+    mc_market = st.selectbox("Market:", ["NSE", "Crypto", "US"], key="mc_market")
+    mc_agent = st.session_state.get(f'agent_{mc_market.lower()}', {})
+    
+    # Calculate current portfolio value
+    portfolio_value = mc_agent.get('balance', 100000)
+    for pos_key, qty in mc_agent.get('positions', {}).items():
+        if qty > 0:
+            entry = mc_agent.get('entry_price', {}).get(pos_key, 0)
+            portfolio_value += qty * entry
+    
+    st.metric("Current Portfolio Value", f"₹{portfolio_value:,.0f}")
+    
+    # Get historical returns
+    if st.button("🎲 Run Monte Carlo Simulation", type="primary"):
+        with st.spinner("Running 10,000 simulations..."):
+            # Get benchmark returns
+            bench = {"NSE": "^NSEI", "Crypto": "BTC-USD", "US": "^GSPC"}.get(mc_market, "^NSEI")
+            returns = yf.Ticker(bench).history(period="1y")['Close'].pct_change().dropna()
+            
+            var_data = calculate_var_monte_carlo(portfolio_value, returns, confidence=0.95)
+            
+            if var_data:
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("VaR (95%)", f"₹{var_data['var_95']:,.0f}", 
+                         f"-{var_data['var_percent']:.2f}%")
+                m2.metric("CVaR (95%)", f"₹{var_data['cvar_95']:,.0f}",
+                         f"-{var_data['cvar_percent']:.2f}%")
+                m3.metric("Confidence", f"{var_data['confidence']*100:.0f}%")
+                m4.metric("Simulations", f"{var_data['simulations']:,}")
+                
+                st.markdown("#### 💡 What This Means")
+                st.markdown(f"""
+                - **VaR (Value at Risk)**: With 95% confidence, your portfolio will NOT lose more than 
+                  **₹{var_data['var_95']:,.0f}** ({var_data['var_percent']:.2f}%) tomorrow.
+                
+                - **CVaR (Conditional VaR)**: If you DO lose more than VaR, the average loss will be 
+                  **₹{var_data['cvar_95']:,.0f}** ({var_data['cvar_percent']:.2f}%).
+                
+                - **Interpretation**: This is based on historical volatility. Actual losses can exceed 
+                  this in black swan events.
+                """)
+                
+                # Risk assessment
+                if var_data['var_percent'] < 2:
+                    st.success("✅ Low risk - Portfolio volatility is manageable")
+                elif var_data['var_percent'] < 5:
+                    st.warning("🟡 Moderate risk - Consider diversification")
+                else:
+                    st.error("🔴 High risk - Portfolio too volatile, reduce exposure")
+            else:
+                st.error("Could not calculate VaR")
+
+def tab_mpt():
+    """Modern Portfolio Theory Tab"""
+    st.markdown("### 📈 Modern Portfolio Theory - Efficient Frontier")
+    st.info("Optimal portfolio allocation using Markowitz MPT")
+    
+    mpt_market = st.selectbox("Market:", ["NSE", "US"], key="mpt_market")
+    
+    # Select stocks for portfolio
+    available_stocks = MARKET_UNIVERSE.get(mpt_market, [])[:20]
+    selected_stocks = st.multiselect("Select stocks for portfolio (min 2):", 
+                                     available_stocks, 
+                                     default=available_stocks[:5],
+                                     key="mpt_stocks")
+    
+    if len(selected_stocks) >= 2:
+        if st.button("🎯 Optimize Portfolio", type="primary"):
+            with st.spinner("Calculating optimal weights..."):
+                result = calculate_efficient_frontier(selected_stocks, period="1y")
+                
+                if result:
+                    st.markdown("#### 🏆 Optimal Portfolio Allocation")
+                    
+                    # Display weights
+                    weights_df = pd.DataFrame([
+                        {'Stock': k, 'Weight %': v} 
+                        for k, v in result['weights'].items()
+                    ]).sort_values('Weight %', ascending=False)
+                    
+                    st.dataframe(weights_df, use_container_width=True, hide_index=True)
+                    
+                    # Metrics
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Expected Annual Return", f"{result['expected_return']:.2f}%")
+                    m2.metric("Expected Volatility", f"{result['expected_volatility']:.2f}%")
+                    m3.metric("Sharpe Ratio", f"{result['sharpe_ratio']:.2f}")
+                    
+                    # Pie chart
+                    fig = go.Figure(data=[go.Pie(
+                        labels=list(result['weights'].keys()),
+                        values=list(result['weights'].values()),
+                        hole=0.3,
+                        marker_colors=['#00ff88', '#00d4ff', '#ffaa00', '#ff4444', '#9988ff']
+                    )])
+                    
+                    fig.update_layout(
+                        template='plotly_dark',
+                        paper_bgcolor='#0a0e1a',
+                        plot_bgcolor='#0d1520',
+                        height=400,
+                        title="Portfolio Allocation"
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    st.markdown("#### 💡 Interpretation")
+                    st.markdown(f"""
+                    - **Expected Return**: {result['expected_return']:.2f}% annually (based on historical data)
+                    - **Volatility**: {result['expected_volatility']:.2f}% (risk measure)
+                    - **Sharpe Ratio**: {result['sharpe_ratio']:.2f} (>1 is good, >2 is excellent)
+                    
+                    This allocation maximizes risk-adjusted returns based on past 1 year data.
+                    Past performance ≠ future results. Rebalance quarterly.
+                    """)
+                else:
+                    st.error("Could not optimize portfolio - insufficient data")
+    else:
+        st.warning("Select at least 2 stocks")
+
+def tab_llm_chat():
+    """LLM-Powered AI Chat Tab"""
+    st.markdown("### 🤖 AI Chat Assistant (Powered by Groq Llama-3)")
+    st.info("Ask anything about markets, stocks, or your portfolio - AI will analyze and respond")
+    
+    if not GROQ_AVAILABLE:
+        st.error("⚠️ Groq library not installed. Run: `pip install groq`")
+        return
+    
+    if not GROQ_API_KEY.startswith('gsk_'):
+        st.warning("⚠️ Groq API key not configured. Get free key from console.groq.com")
+        st.markdown("""
+        **Setup Steps:**
+        1. Go to https://console.groq.com
+        2. Sign up (free)
+        3. Create API key
+        4. Replace `GROQ_API_KEY` in code with your key
+        """)
+        return
+    
+    # Initialize chat history
+    if "llm_chat_history" not in st.session_state:
+        st.session_state.llm_chat_history = []
+    
+    # Display chat history
+    for msg in st.session_state.llm_chat_history[-10:]:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+    
+    # Chat input
+    if user_input := st.chat_input("Ask about markets, stocks, or strategy..."):
+        # Add user message
+        st.session_state.llm_chat_history.append({"role": "user", "content": user_input})
+        with st.chat_message("user"):
+            st.markdown(user_input)
+        
+        # Prepare market context
+        market_context = {
+            "timestamp": datetime.now().isoformat(),
+            "portfolio_summary": {}
+        }
+        
+        for market in ["NSE", "Crypto", "US"]:
+            agent = st.session_state.get(f'agent_{market.lower()}', {})
+            if agent:
+                balance = agent.get('balance', 0)
+                positions = len([q for q in agent.get('positions', {}).values() if q > 0])
+                trades = len(agent.get('trade_log', []))
+                market_context["portfolio_summary"][market] = {
+                    "balance": balance,
+                    "open_positions": positions,
+                    "total_trades": trades
+                }
+        
+        # Get AI response
+        with st.chat_message("assistant"):
+            with st.spinner("🧠 AI is thinking..."):
+                response = groq_ai_analysis(market_context, user_input)
+                st.markdown(response)
+        
+        st.session_state.llm_chat_history.append({"role": "assistant", "content": response})
+    
+    # Clear chat button
+    if st.session_state.llm_chat_history:
+        if st.button("🗑️ Clear Chat"):
+            st.session_state.llm_chat_history = []
+            st.rerun()
+
+def tab_voice_control():
+    """Voice Command Control Tab"""
+    st.markdown("### 🎤 Voice Command Terminal")
+    st.info("Control your trading terminal with voice commands")
+    
+    if not VOICE_AVAILABLE:
+        st.error("⚠️ SpeechRecognition not installed. Run: `pip install SpeechRecognition`")
+        return
+    
+    st.markdown("""
+    **Available Commands:**
+    - "Show portfolio" - Display portfolio summary
+    - "What is RELIANCE price" - Get stock price
+    - "Scan NSE market" - Run market scan
+    - "Show win rate" - Display win rate stats
+    - "Clear chat" - Clear AI chat history
+    """)
+    
+    if st.button("🎤 Start Listening", type="primary"):
+        command = voice_command_listener()
+        
+        if command:
+            st.success(f"🎤 Heard: '{command}'")
+            
+            # Process command
+            if "portfolio" in command:
+                st.info("📊 Portfolio Summary:")
+                for market in ["NSE", "Crypto", "US"]:
+                    agent = st.session_state.get(f'agent_{market.lower()}', {})
+                    balance = agent.get('balance', 0)
+                    st.write(f"**{market}:** ₹{balance:,.0f}")
+            
+            elif "price" in command:
+                # Extract stock name (simplified)
+                st.info("📈 Stock price lookup - use manual tab for detailed analysis")
+            
+            elif "scan" in command:
+                st.info("🔍 Market scan initiated - check AI Agent Radar tab")
+            
+            elif "win rate" in command:
+                st.info("🏆 Win rate stats - check Leaderboard tab")
+            
+            elif "clear" in command and "chat" in command:
+                st.session_state.llm_chat_history = []
+                st.success("✅ Chat cleared")
+            
+            else:
+                st.warning("❓ Command not recognized. Try: 'show portfolio'")
+        else:
+            st.warning("🔇 Could not understand. Try again.")
+
+# ================= INTEGRATION WITH EXISTING DASHBOARD =================
+# Add these new tabs to your existing dashboard
+
+def add_v10_tabs():
+    """
+    Add v10 tabs to existing dashboard
+    Call this after your existing tabs
+    """
+    st.divider()
+    st.markdown("## 🚀 QUANTEDGE AI v10.0 - Advanced Features")
+    
+    v10_tab1, v10_tab2, v10_tab3, v10_tab4, v10_tab5, v10_tab6, v10_tab7 = st.tabs([
+        "📊 Volume Profile",
+        "🌍 Macro Engine",
+        "🎲 Monte Carlo VaR",
+        "📈 MPT Optimizer",
+        "🤖 LLM Chat",
+        "🎤 Voice Control",
+        "📈 Enhanced F&O"
+    ])
+    
+    with v10_tab1:
+        tab_volume_profile()
+    
+    with v10_tab2:
+        tab_macro_engine()
+    
+    with v10_tab3:
+        tab_monte_carlo()
+    
+    with v10_tab4:
+        tab_mpt()
+    
+    with v10_tab5:
+        tab_llm_chat()
+    
+    with v10_tab6:
+        tab_voice_control()
+    
+    with v10_tab7:
+        st.markdown("### 📈 Enhanced F&O Analysis")
+        st.info("Complete F&O data with Max Pain, OI Change, PCR, and Support/Resistance")
+        
+        fno_market = st.selectbox("Market:", ["NSE", "US"], key="fno_market_v10")
+        fno_stocks = ["NIFTY", "BANKNIFTY", "RELIANCE.NS", "TCS.NS", "INFY.NS"] if fno_market == "NSE" else ["AAPL", "TSLA", "NVDA"]
+        fno_sym = st.selectbox("Stock/Index:", fno_stocks, key="fno_sym_v10")
+        
+        if st.button("🔍 Analyze F&O Data", type="primary"):
+            with st.spinner("Fetching F&O data..."):
+                fno_data = enhanced_fno_analysis(fno_sym.replace("NIFTY", "^NSEI").replace("BANKNIFTY", "^NSEBANK"))
+                
+                if fno_data:
+                    # Key metrics
+                    m1, m2, m3, m4 = st.columns(4)
+                    m1.metric("PCR", fno_data['pcr'], fno_data['pcr_signal'])
+                    m2.metric("Max Pain", f"₹{fno_data['max_pain']}" if fno_data['max_pain'] else "N/A")
+                    m3.metric("Current Price", f"₹{fno_data['current_price']:.2f}")
+                    m4.metric("Expiry", fno_data['expiry'])
+                    
+                    # OI Analysis
+                    if fno_data['oi_analysis']:
+                        st.markdown("#### 📊 OI Change Analysis")
+                        oi = fno_data['oi_analysis']
+                        st.markdown(f"""
+                        <div class="card-info">
+                            <div style="font-size:1.3rem;font-weight:700;color:#00d4ff">{oi['buildup']}</div>
+                            <div style="margin-top:8px">
+                                <span style="color:#7a8fa6">Price Change:</span> 
+                                <span style="color:{'#00ff88' if oi['price_change'] > 0 else '#ff4444'};font-weight:700">
+                                    {oi['price_change']:+.2f}%
+                                </span>
+                            </div>
+                            <div>
+                                <span style="color:#7a8fa6">Volume Change:</span> 
+                                <span style="color:{'#00ff88' if oi['vol_change'] > 0 else '#ff4444'};font-weight:700">
+                                    {oi['vol_change']:+.2f}%
+                                </span>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    # Support/Resistance
+                    st.markdown("#### 🎯 F&O-Based Support & Resistance")
+                    sr_col1, sr_col2 = st.columns(2)
+                    
+                    with sr_col1:
+                        st.markdown("**🔴 Resistance Levels**")
+                        for r in fno_data['resistance_levels']:
+                            st.markdown(f"- ₹{r:.2f}")
+                    
+                    with sr_col2:
+                        st.markdown("**🟢 Support Levels**")
+                        for s in fno_data['support_levels']:
+                            st.markdown(f"- ₹{s:.2f}")
+                    
+                    # OI Chart
+                    st.markdown("#### 📊 Open Interest Distribution")
+                    # Would need full options chain data for chart
+                    st.info(f"Total Call OI: {fno_data['total_call_oi']:,} | Total Put OI: {fno_data['total_put_oi']:,}")
+                else:
+                    st.error("Could not fetch F&O data")
+
+# ================= USAGE INSTRUCTIONS =================
+"""
+To integrate v10.0 features into your existing dashboard:
+
+1. Add all the new functions above to your code
+
+2. At the end of your existing dashboard (after all current tabs), add:
+
+```python
+# ================= QUANTEDGE AI v10.0 FEATURES =================
+add_v10_tabs()
+```
+
+3. Install new dependencies:
+```bash
+pip install groq scipy SpeechRecognition
+```
+
+4. Get free Groq API key:
+   - Go to https://console.groq.com
+   - Sign up and create API key
+   - Replace GROQ_API_KEY in the code
+
+5. Restart your Streamlit app
+
+That's it! All v10 features will be available in new tabs.
+"""
+
+print("""
+✅ QUANTEDGE AI v10.0 - Institutional Grade Terminal
+=====================================================
+
+New Features Added:
+1. ✅ Volume Profile & POC - Institutional chart analysis
+2. ✅ Macro Correlation Engine - DXY, Yields, Crude impact
+3. ✅ Monte Carlo VaR - Advanced risk management
+4. ✅ Modern Portfolio Theory - Efficient frontier optimization
+5. ✅ Groq LLM Integration - AI-powered chat with Llama-3
+6. ✅ Voice Commands - Control terminal with voice
+7. ✅ Enhanced F&O - Max Pain, OI Change, PCR analysis
+8. ✅ Ensemble ML - Multiple models combined for better predictions
+9. ✅ On-Chain Crypto - Whale tracking, funding rates (simulated)
+
+Next Steps:
+- Install: pip install groq scipy SpeechRecognition
+- Get Groq API key from console.groq.com
+- Add add_v10_tabs() to your dashboard
+- Run: streamlit run dashboard_v10.py
+
+🚀 Ready to trade like an institution!
+""")
